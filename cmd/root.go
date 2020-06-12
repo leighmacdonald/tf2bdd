@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/leighmacdonald/steamid"
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -21,6 +22,11 @@ var rootCmd = &cobra.Command{
 	Short: "Backend services for tf2_bot_detector",
 	Long:  `tf2bdd provides HTTP and discord services for use with tf2_bot_detector`,
 	Run: func(cmd *cobra.Command, args []string) {
+		steamKey := os.Getenv("STEAM_TOKEN")
+		if steamKey == "" || len(steamKey) != 32 {
+			log.Fatalf("Invalid steam token: %s", steamKey)
+		}
+		steamid.SetKey(steamKey)
 		token := os.Getenv("BOT_TOKEN")
 		if token == "" || len(token) != 59 {
 			log.Fatalf("Invalid bot token: %s", token)
