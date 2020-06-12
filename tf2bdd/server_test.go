@@ -1,4 +1,4 @@
-package main
+package tf2bdd
 
 import (
 	"bytes"
