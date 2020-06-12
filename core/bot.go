@@ -1,4 +1,4 @@
-package tf2bdd
+package core
 
 import (
 	"fmt"

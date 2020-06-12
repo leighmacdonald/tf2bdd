@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 	"net/http"
 	"os"
-	"tf2bdd/tf2bdd"
+	"tf2bdd/core"
 	"time"
 )
 
@@ -32,21 +32,21 @@ var rootCmd = &cobra.Command{
 			log.Fatalf("Invalid bot token: %s", token)
 		}
 		ctx := context.Background()
-		go tf2bdd.LoadMasterIDS()
-		opts := tf2bdd.DefaultHTTPOpts()
-		opts.Handler = tf2bdd.NewRouter()
-		srv := tf2bdd.NewHTTPServer(opts)
+		go core.LoadMasterIDS()
+		opts := core.DefaultHTTPOpts()
+		opts.Handler = core.NewRouter()
+		srv := core.NewHTTPServer(opts)
 		go func() {
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Errorf("Listener error: %s", err)
 			}
 		}()
-		dg, err := tf2bdd.NewBot(token)
+		dg, err := core.NewBot(token)
 		if err != nil {
 			log.Fatalf("Could not connect to discord: %s", err)
 		}
-		log.Infof("Add bot linK: %s", tf2bdd.AddUrl())
-		tf2bdd.Wait(ctx, func(ctx context.Context) error {
+		log.Infof("Add bot linK: %s", core.AddUrl())
+		core.Wait(ctx, func(ctx context.Context) error {
 			if err := dg.Close(); err != nil {
 				log.Errorf("Failed to properly shutdown discord client: %s", err)
 			}
