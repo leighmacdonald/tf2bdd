@@ -127,7 +127,8 @@ func (a *App) check(s *discordgo.Session, m *discordgo.MessageCreate, sid steami
 	if !found {
 		return errors.Errorf("Steam id doesnt exist in database: %d", sid)
 	}
-	sendMsg(s, m, fmt.Sprintf(":skull_crossbones: %d is a confirmed baddie :skull_crossbones:", sid.Int64()))
+	sendMsg(s, m, fmt.Sprintf(":skull_crossbones: %d is a confirmed baddie :skull_crossbones: "+
+		"http://steamcommunity.com/profiles/%d", sid.Int64(), sid.Int64()))
 	return nil
 }
 
