@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -29,10 +30,7 @@ const (
 )
 
 var (
-	authKeys []string
-	ids      []Player
-	idsMu    *sync.RWMutex
-	log      *logrus.Logger
+	log *logrus.Logger
 )
 
 type AddSteamIDReq struct {
@@ -47,9 +45,9 @@ type LastSeen struct {
 }
 
 type Player struct {
+	SteamID    steamid.SID64 `json:"steam_id"`
 	Attributes []Attributes  `json:"attributes"`
 	LastSeen   LastSeen      `json:"last_seen,omitempty"`
-	SteamID    steamid.SID64 `json:"steam_id"`
 }
 
 type ErrResp struct {
@@ -60,14 +58,40 @@ type SucResp struct {
 	Message string `json:"message"`
 }
 
-func handleGetSteamIDS(c *gin.Context) {
-	idsMu.RLock()
-	steamIDs := ids
-	idsMu.RUnlock()
+type App struct {
+	db       *sql.DB
+	authKeys []string
+	ids      map[steamid.SID64]Player
+	idsMu    *sync.RWMutex
+	ctx      context.Context
+}
+
+func NewApp(ctx context.Context, dbPath string, authKeys []string) (*App, error) {
+	db, err := openDB(ctx, dbPath)
+	if err != nil {
+		return nil, err
+	}
+	players := make(map[steamid.SID64]Player)
+	if err := loadPlayers(ctx, db, players); err != nil {
+		return nil, err
+	}
+	return &App{
+		db:       db,
+		authKeys: authKeys,
+		ids:      players,
+		idsMu:    &sync.RWMutex{},
+		ctx:      context.Background(),
+	}, nil
+}
+
+func (a *App) handleGetSteamIDS(c *gin.Context) {
+	a.idsMu.RLock()
+	steamIDs := a.ids
+	a.idsMu.RUnlock()
 	c.JSON(200, steamIDs)
 }
 
-func handleAddSteamID(c *gin.Context) {
+func (a *App) handleAddSteamID(c *gin.Context) {
 	var req AddSteamIDReq
 	if err := c.BindJSON(&req); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{Error: "Invalid request format"})
@@ -79,20 +103,20 @@ func handleAddSteamID(c *gin.Context) {
 			Error: fmt.Sprintf("Invalid steam id: %s", req.SteamID)})
 		return
 	}
-	idsMu.Lock()
-	ids = append(ids, Player{
+	a.idsMu.Lock()
+	a.ids[steamID] = Player{
 		Attributes: req.Attributes,
 		SteamID:    steamID,
-	})
-	idsMu.Unlock()
+	}
+	a.idsMu.Unlock()
 	c.JSON(200, SucResp{Message: fmt.Sprintf("Added successfully: %s", req.SteamID)})
 }
 
-func AuthRequired() gin.HandlerFunc {
+func (a *App) AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		isBaddie := true
 		authKey := c.GetHeader("Authorization")
-		for _, k := range authKeys {
+		for _, k := range a.authKeys {
 			if k == authKey {
 				isBaddie = false
 				break
@@ -155,17 +179,25 @@ func DownloadMasterList() ([]Player, error) {
 	return p, nil
 }
 
-func LoadMasterIDS() {
+func (a *App) LoadMasterIDS() {
 	ml, err := DownloadMasterList()
 	if err != nil {
 		log.Errorf("Failed to download master list from GH: %s", err)
 		return
 	}
-	idsMu.Lock()
 	for _, p := range ml {
-		ids = append(ids, p)
+		if err := addPlayer(a.ctx, a.db, p); err != nil {
+			if err.Error() == "UNIQUE constraint failed: player.steamid" {
+				continue
+			}
+			log.Errorf(err.Error())
+		}
 	}
-	idsMu.Unlock()
+	a.idsMu.Lock()
+	for _, p := range ml {
+		a.ids[p.SteamID] = p
+	}
+	a.idsMu.Unlock()
 	log.Infof("Downloaded %d steamids", len(ml))
 }
 
@@ -191,12 +223,12 @@ func DefaultHTTPOpts() *HTTPOpts {
 	}
 }
 
-func NewRouter() *gin.Engine {
+func NewRouter(a *App) *gin.Engine {
 	r := gin.New()
 	r.Use(ginlogrus.Logger(log))
-	r.GET("/v1/steamids", handleGetSteamIDS)
-	authed := r.Group("/", AuthRequired())
-	authed.POST("/v1/steamids", handleAddSteamID)
+	r.GET("/v1/steamids", a.handleGetSteamIDS)
+	authed := r.Group("/", a.AuthRequired())
+	authed.POST("/v1/steamids", a.handleAddSteamID)
 	return r
 }
 
@@ -244,5 +276,4 @@ func init() {
 	log.SetFormatter(&logrus.TextFormatter{
 		ForceColors: true,
 	})
-	idsMu = &sync.RWMutex{}
 }

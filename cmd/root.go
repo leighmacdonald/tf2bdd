@@ -32,20 +32,26 @@ var rootCmd = &cobra.Command{
 			log.Fatalf("Invalid bot token: %s", token)
 		}
 		ctx := context.Background()
-		go core.LoadMasterIDS()
+		app, err := core.NewApp(ctx, "./db.sqlite", []string{
+			"2SVNWuXfv4VewYCuvMXEC3G4CsCY3Ur4Szhihekw4uiK9trfMfxS9QveFuVBQ8a8j",
+		})
+		if err != nil {
+			log.Fatalf("Failed to init app: %v", err)
+		}
+		app.LoadMasterIDS()
 		opts := core.DefaultHTTPOpts()
-		opts.Handler = core.NewRouter()
+		opts.Handler = core.NewRouter(app)
 		srv := core.NewHTTPServer(opts)
 		go func() {
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Errorf("Listener error: %s", err)
 			}
 		}()
-		dg, err := core.NewBot(token)
+		dg, err := core.NewBot(app, token)
 		if err != nil {
 			log.Fatalf("Could not connect to discord: %s", err)
 		}
-		log.Infof("Add bot linK: %s", core.AddUrl())
+		//log.Infof("Add bot linK: %s", core.AddUrl())
 		core.Wait(ctx, func(ctx context.Context) error {
 			if err := dg.Close(); err != nil {
 				log.Errorf("Failed to properly shutdown discord client: %s", err)
