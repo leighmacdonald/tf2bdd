@@ -92,7 +92,7 @@ func (a *App) handleGetSteamIDS(c *gin.Context) {
 	}
 	a.idsMu.RUnlock()
 	c.JSON(200, gin.H{
-		"$schema":    "https://github.com/PazerOP/tf2_bot_detector/blob/master/staging/cfg/schema/playerlist.schema.json",
+		"$schema":    "https://raw.githubusercontent.com/PazerOP/tf2_bot_detector/blob/master/staging/cfg/schema/playerlist.schema.json",
 		"update_url": "https://tf2bdd.pazer.us/v1/steamids",
 		"players":    players,
 	})
