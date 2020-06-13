@@ -91,7 +91,10 @@ func (a *App) handleGetSteamIDS(c *gin.Context) {
 		players = append(players, v)
 	}
 	a.idsMu.RUnlock()
-	c.JSON(200, players)
+	c.JSON(200, gin.H{
+		"update_url": "https://tf2bdd.pazer.us/v1/steamids",
+		"players":    players,
+	})
 }
 
 func (a *App) handleAddSteamID(c *gin.Context) {
