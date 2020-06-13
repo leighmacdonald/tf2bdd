@@ -94,6 +94,8 @@ func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.
 				attrs = append(attrs, sus)
 			case "racist":
 				attrs = append(attrs, racist)
+			case "exploiter":
+				attrs = append(attrs, exploiter)
 			default:
 				return errors.Errorf("Unknown tag: %s", msg[i])
 			}
