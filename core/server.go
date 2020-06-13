@@ -85,10 +85,13 @@ func NewApp(ctx context.Context, dbPath string, authKeys []string) (*App, error)
 }
 
 func (a *App) handleGetSteamIDS(c *gin.Context) {
+	var players []Player
 	a.idsMu.RLock()
-	steamIDs := a.ids
+	for _, v := range a.ids {
+		players = append(players, v)
+	}
 	a.idsMu.RUnlock()
-	c.JSON(200, steamIDs)
+	c.JSON(200, players)
 }
 
 func (a *App) handleAddSteamID(c *gin.Context) {
