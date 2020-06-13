@@ -13,7 +13,10 @@ Simple service to send new player lists to the bot detector.
   
 ## Commands
 
+Bot command list:
 
   `!add <steamid/profile> [attributes]` Add the user to the master ban list. Valid attributes are 0 or more of: `racist sus/suspicious cheater exploiter`. If none are defined, it will use cheater by default.
-  
+  `!del <steamid/profile>` Remove the player from the master list
+  `!check <steamid/profile>` Checks if the user exists in the database
+  `!count` Shows the current count of players tracked
   

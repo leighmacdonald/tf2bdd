@@ -120,6 +120,16 @@ func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.
 	sendMsg(s, m, fmt.Sprintf("Added new entry successfully: %d", sid))
 	return nil
 }
+func (a *App) check(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) error {
+	a.idsMu.RLock()
+	_, found := a.ids[sid]
+	a.idsMu.RUnlock()
+	if !found {
+		return errors.Errorf("Steam id doesnt exist in database: %d", sid)
+	}
+	sendMsg(s, m, fmt.Sprintf(":skull_crossbones: %d is a confirmed baddie :skull_crossbones:", sid.Int64()))
+	return nil
+}
 
 func (a *App) del(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) error {
 	a.idsMu.RLock()
@@ -144,7 +154,15 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 	msg := strings.Split(strings.ToLower(m.Content), " ")
-	if msg[0] != "!add" && msg[0] != "!del" && msg[0] != "!count" {
+	commands := []string{"!add", "!del", "!count", "!check"}
+	validCmd := false
+	for _, c := range commands {
+		if c == msg[0] {
+			validCmd = true
+			break
+		}
+	}
+	if !validCmd {
 		return
 	}
 	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
@@ -171,6 +189,8 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	switch msg[0] {
 	case "!del":
 		cmdErr = a.del(s, m, sid)
+	case "!check":
+		cmdErr = a.check(s, m, sid)
 	case "!add":
 		cmdErr = a.add(s, m, sid, msg)
 	case "!count":
