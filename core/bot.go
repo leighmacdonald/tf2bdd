@@ -134,6 +134,17 @@ func (a *App) check(s *discordgo.Session, m *discordgo.MessageCreate, sid steami
 	return nil
 }
 
+func (a *App) steamid(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) {
+	var b strings.Builder
+	b.WriteString("```")
+	b.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
+	b.WriteString(fmt.Sprintf("Steam32: %d\n", steamid.SID64ToSID32(sid)))
+	b.WriteString(fmt.Sprintf("Steam3:  %s", steamid.SID64ToSID3(sid)))
+	b.WriteString("```")
+	b.WriteString(fmt.Sprintf("Profile: <https://steamcommunity.com/profiles/%d>", sid.Int64()))
+	sendMsg(s, m, b.String())
+}
+
 func (a *App) del(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) error {
 	a.idsMu.RLock()
 	_, found := a.ids[sid]
@@ -157,7 +168,7 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 	msg := strings.Split(strings.ToLower(m.Content), " ")
-	commands := []string{"!add", "!del", "!count", "!check"}
+	commands := []string{"!add", "!del", "!count", "!check", "!steamid"}
 	validCmd := false
 	for _, c := range commands {
 		if c == msg[0] {
@@ -198,6 +209,8 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmdErr = a.add(s, m, sid, msg)
 	case "!count":
 		a.count(s, m)
+	case "!steamid":
+		a.steamid(s, m, sid)
 	}
 	if cmdErr != nil {
 		sendMsg(s, m, cmdErr.Error())
