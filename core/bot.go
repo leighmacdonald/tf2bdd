@@ -246,6 +246,8 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmdErr = a.add(s, m, sid, msg)
 	case "!steamid":
 		a.steamid(s, m, sid)
+	case "!count":
+		a.count(s, m)
 	case "!import":
 		cmdErr = a.importJSON(s, m)
 	}
