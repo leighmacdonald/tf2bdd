@@ -66,7 +66,7 @@ type LastSeen struct {
 }
 
 type Player struct {
-	SteamID    steamid.SID64 `json:"steam_id"`
+	SteamID    steamid.SID64 `json:"steamid"`
 	Attributes []Attributes  `json:"attributes"`
 	LastSeen   LastSeen      `json:"last_seen,omitempty"`
 }
