@@ -3,13 +3,13 @@ package core
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/leighmacdonald/steamid"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"tf2bdd/steamid"
 )
 
 const testAuthKey = "123456"

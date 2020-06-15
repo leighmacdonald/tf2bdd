@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"strings"
+	"tf2bdd/steamid"
 )
 
 type UGCRank int

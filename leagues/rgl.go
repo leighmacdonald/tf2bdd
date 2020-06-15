@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"regexp"
+	"tf2bdd/steamid"
 )
 
 type RGLRank int

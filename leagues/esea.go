@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"log"
 	"net/url"
 	"strings"
+	"tf2bdd/steamid"
 )
 
 type ESEARank int

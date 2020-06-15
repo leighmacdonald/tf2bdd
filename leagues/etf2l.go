@@ -1,6 +1,6 @@
 package leagues
 
-import "github.com/leighmacdonald/steamid"
+import "tf2bdd/steamid"
 
 const (
 	baseURL = "https://api.etf2l.org"
