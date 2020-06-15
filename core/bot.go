@@ -216,16 +216,12 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if !validCmd {
 		return
 	}
-	if msg[0] == "!count" {
-		a.count(s, m)
-		return
-	}
 	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
 	if err != nil {
 		log.Errorf("Failed to lookup role data")
 		return
 	}
-	if !allowed {
+	if !allowed && msg[0] != "!steamid" && msg[0] != "!count" {
 		sendMsg(s, m, "Unauthorized")
 		return
 	}

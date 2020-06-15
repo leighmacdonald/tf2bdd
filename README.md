@@ -19,4 +19,6 @@ Bot command list:
   `!del <steamid/profile>` Remove the player from the master list
   `!check <steamid/profile>` Checks if the user exists in the database
   `!count` Shows the current count of players tracked
+  `!import <attach_a_json_file>` Imports the steam ids from a players custom ban list
+  `!steamid <steamid/profile>` Get the various steam ids
   
