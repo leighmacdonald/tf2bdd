@@ -216,6 +216,10 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if !validCmd {
 		return
 	}
+	if msg[0] == "!count" {
+		a.count(s, m)
+		return
+	}
 	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
 	if err != nil {
 		log.Errorf("Failed to lookup role data")
@@ -244,12 +248,10 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmdErr = a.check(s, m, sid)
 	case "!add":
 		cmdErr = a.add(s, m, sid, msg)
-	case "!count":
-		a.count(s, m)
 	case "!steamid":
 		a.steamid(s, m, sid)
 	case "!import":
-		a.importJSON(s, m)
+		cmdErr = a.importJSON(s, m)
 	}
 	if cmdErr != nil {
 		sendMsg(s, m, cmdErr.Error())
