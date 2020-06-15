@@ -3,10 +3,10 @@ package core
 import (
 	"context"
 	"database/sql"
-	"github.com/leighmacdonald/steamid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"strings"
+	"tf2bdd/steamid"
 	"time"
 )
 

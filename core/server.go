@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/toorop/gin-logrus"
@@ -17,6 +16,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"tf2bdd/steamid"
 	"time"
 )
 
@@ -52,6 +52,7 @@ type masterListResp struct {
 	ListSource ListSource `json:"file_info"`
 	Schema     string     `json:"$schema"`
 	Players    []Player   `json:"players"`
+	Version    int        `json:"version"`
 }
 
 type AddSteamIDReq struct {
@@ -202,12 +203,8 @@ func DownloadMasterList() ([]Player, error) {
 	return p, nil
 }
 
-func (a *App) LoadMasterIDS() {
-	ml, err := DownloadMasterList()
-	if err != nil {
-		log.Errorf("Failed to download master list from GH: %s", err)
-		return
-	}
+func (a *App) LoadMasterIDS(ml []Player) int {
+	added := 0
 	for _, p := range ml {
 		if err := addPlayer(a.ctx, a.db, p); err != nil {
 			if err.Error() == "UNIQUE constraint failed: player.steamid" {
@@ -215,6 +212,7 @@ func (a *App) LoadMasterIDS() {
 			}
 			log.Errorf(err.Error())
 		}
+		added++
 	}
 	a.idsMu.Lock()
 	for _, p := range ml {
@@ -222,6 +220,7 @@ func (a *App) LoadMasterIDS() {
 	}
 	a.idsMu.Unlock()
 	log.Infof("Downloaded %d steamids", len(ml))
+	return added
 }
 
 type HTTPOpts struct {

@@ -1,11 +1,15 @@
 package core
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
-	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
+	"io/ioutil"
+	"net/http"
 	"strings"
+	"tf2bdd/steamid"
 	"time"
 )
 
@@ -15,7 +19,7 @@ const (
 	addFmt   = "https://discord.com/oauth2/authorize?client_id=%d&scope=bot&permissions=%d"
 )
 
-var allowedRoles = []string{"717861254403981334"}
+var allowedRoles = []string{"717861254403981334", "493071295777341450"}
 
 func AddUrl() string {
 	return fmt.Sprintf(addFmt, clientID, perms)
@@ -145,6 +149,39 @@ func (a *App) steamid(s *discordgo.Session, m *discordgo.MessageCreate, sid stea
 	sendMsg(s, m, b.String())
 }
 
+func (a *App) importJSON(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	log.Debugln(m)
+	if len(m.Attachments) == 0 {
+		return errors.New("Must attach json file to import")
+	}
+	client := http.Client{}
+	c, cancel := context.WithTimeout(a.ctx, time.Second*30)
+	defer cancel()
+	added := 0
+	for _, attach := range m.Attachments {
+		req, err := http.NewRequestWithContext(c, "GET", attach.URL, nil)
+		if err != nil {
+			return errors.Wrapf(err, "failed to setup http request")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return errors.Wrapf(err, "failed to download file")
+		}
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return errors.Wrapf(err, "failed to read response body")
+		}
+		_ = resp.Body.Close()
+		var playerList masterListResp
+		if err := json.Unmarshal(b, &playerList); err != nil {
+			return errors.Wrapf(err, "failed to decode file")
+		}
+		added += a.LoadMasterIDS(playerList.Players)
+	}
+	sendMsg(s, m, fmt.Sprintf("Loaded %d new players", added))
+	return nil
+}
+
 func (a *App) del(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) error {
 	a.idsMu.RLock()
 	_, found := a.ids[sid]
@@ -168,7 +205,7 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 	msg := strings.Split(strings.ToLower(m.Content), " ")
-	commands := []string{"!add", "!del", "!count", "!check", "!steamid"}
+	commands := []string{"!add", "!del", "!count", "!check", "!steamid", "!import"}
 	validCmd := false
 	for _, c := range commands {
 		if c == msg[0] {
@@ -211,6 +248,8 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		a.count(s, m)
 	case "!steamid":
 		a.steamid(s, m, sid)
+	case "!import":
+		a.importJSON(s, m)
 	}
 	if cmdErr != nil {
 		sendMsg(s, m, cmdErr.Error())

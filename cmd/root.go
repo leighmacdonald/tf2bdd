@@ -38,7 +38,11 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Failed to init app: %v", err)
 		}
-		app.LoadMasterIDS()
+		ml, err := core.DownloadMasterList()
+		if err != nil {
+			log.Warnf("Failed to download master list from GH: %s", err)
+		}
+		app.LoadMasterIDS(ml)
 		opts := core.DefaultHTTPOpts()
 		opts.Handler = core.NewRouter(app)
 		srv := core.NewHTTPServer(opts)
