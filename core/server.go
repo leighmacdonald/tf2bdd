@@ -33,6 +33,27 @@ var (
 	log *logrus.Logger
 )
 
+const (
+	masterList  = "https://raw.githubusercontent.com/PazerOP/tf2_bot_detector/master/tf2_bot_detector/cfg/playerlist.official.json"
+	schemaURL   = "https://raw.githubusercontent.com/PazerOP/tf2_bot_detector/master/schemas/v3/playerlist.schema.json"
+	title       = "@trusted Ban List"
+	description = "Curated list of steamid's created by the @trusted people in the official discord server"
+	updateURL   = "https://tf2bdd.pazer.us/v1/steamids"
+)
+
+type ListSource struct {
+	Authors     []string `json:"authors"`
+	Description string   `json:"description"`
+	Title       string   `json:"title"`
+	UpdateURL   string   `json:"update_url"`
+}
+
+type masterListResp struct {
+	ListSource ListSource `json:"file_info"`
+	Schema     string     `json:"$schema"`
+	Players    []Player   `json:"players"`
+}
+
 type AddSteamIDReq struct {
 	Attributes []Attributes
 	SteamID    string
@@ -84,6 +105,19 @@ func NewApp(ctx context.Context, dbPath string, authKeys []string) (*App, error)
 	}, nil
 }
 
+func newSteamIDResp(players []Player) masterListResp {
+	return masterListResp{
+		ListSource: ListSource{
+			Authors:     []string{"pazer"},
+			Description: description,
+			Title:       title,
+			UpdateURL:   updateURL,
+		},
+		Schema:  schemaURL,
+		Players: players,
+	}
+}
+
 func (a *App) handleGetSteamIDS(c *gin.Context) {
 	var players []Player
 	a.idsMu.RLock()
@@ -91,11 +125,7 @@ func (a *App) handleGetSteamIDS(c *gin.Context) {
 		players = append(players, v)
 	}
 	a.idsMu.RUnlock()
-	c.JSON(200, gin.H{
-		"$schema":    "https://raw.githubusercontent.com/PazerOP/tf2_bot_detector/blob/master/staging/cfg/schema/playerlist.schema.json",
-		"update_url": "https://tf2bdd.pazer.us/v1/steamids",
-		"players":    players,
-	})
+	c.JSON(200, newSteamIDResp(players))
 }
 
 func (a *App) handleAddSteamID(c *gin.Context) {
@@ -137,20 +167,6 @@ func (a *App) AuthRequired() gin.HandlerFunc {
 	}
 }
 
-const masterList = "https://raw.githubusercontent.com/PazerOP/tf2_bot_detector/master/tf2_bot_detector/cfg/playerlist.official.json"
-
-type masterListResp struct {
-	Schema  string     `json:"$schema"`
-	Players []MLPlayer `json:"players"`
-	Version int        `json:"version"`
-}
-
-type MLPlayer struct {
-	Attributes []Attributes `json:"attributes"`
-	LastSeen   LastSeen     `json:"last_seen,omitempty"`
-	SteamID    string       `json:"steamid"`
-}
-
 func DownloadMasterList() ([]Player, error) {
 	resp, err := http.Get(masterList)
 	if err != nil {
@@ -177,7 +193,7 @@ func DownloadMasterList() ([]Player, error) {
 		newPlayer := Player{
 			Attributes: mlP.Attributes,
 			LastSeen:   mlP.LastSeen,
-			SteamID:    steamid.StringToSID64(mlP.SteamID),
+			SteamID:    mlP.SteamID,
 		}
 		if newPlayer.SteamID.Valid() {
 			p = append(p, newPlayer)
