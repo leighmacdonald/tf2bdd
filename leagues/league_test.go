@@ -1,7 +1,7 @@
 package leagues
 
 import (
-	"encoding/json"
+	"context"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"os"
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tf2bdd/steamid"
+	"time"
 )
 
 // exists checks for the existence of a file path
@@ -43,7 +45,22 @@ func filePath(p string) string {
 func TestRGL(t *testing.T) {
 	b, err := ioutil.ReadFile(filePath("examples/rgl.json"))
 	require.NoError(t, err, "Could not open test file")
-	var resp RGLResponse
-	require.NoError(t, json.Unmarshal(b, &resp))
-	require.NoError(t, parseRGLFormat(&resp))
+	lHist, err := parseRGL(b)
+	require.NoError(t, err)
+	require.Greater(t, len(lHist), 10)
+}
+
+func TestETF2L(t *testing.T) {
+	c, cancel := context.WithTimeout(context.Background(), time.Second*25)
+	defer cancel()
+	seasons, err := getETF2L(c, 76561198004469267)
+	require.NoError(t, err)
+	require.Greater(t, len(seasons), 2)
+}
+
+func TestFetchAll(t *testing.T) {
+	c, cancel := context.WithTimeout(context.Background(), time.Second*25)
+	defer cancel()
+	seasons := FetchAll(c, steamid.SID64(76561197970669109))
+	require.Greater(t, len(seasons), 20)
 }

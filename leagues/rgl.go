@@ -1,40 +1,16 @@
 package leagues
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"regexp"
+	"sort"
 	"strings"
 	"tf2bdd/steamid"
-)
-
-type RGLDivision int
-
-const (
-	RGLRankNone         RGLDivision = 0
-	RGLRankUnready      RGLDivision = 0
-	RGLRankFreshMeat    RGLDivision = 1
-	RGLRankOpen         RGLDivision = 1
-	RGLRankMain         RGLDivision = 2
-	RGLRankIntermediate RGLDivision = 3
-	RGLRankAdvanced     RGLDivision = 4
-
-	RGLRankDiv2
-	RGLRankDiv1
-	RGLRankInvite
-)
-
-type RGLFormat int
-
-const (
-	RGLFormatNone RGLFormat = iota
-	RGLFormatPL
-	RGLFormatHL
-	RGLFormat6s
-	RGLFormat6sNR
 )
 
 const (
@@ -46,7 +22,7 @@ var (
 )
 
 func init() {
-	rglJSONRx = regexp.MustCompile(`<span id="lblOutput">(.+?)<\/span>`)
+	rglJSONRx = regexp.MustCompile(`<span id="lblOutput">(.+?)</span>`)
 }
 
 type rglPlayer struct {
@@ -76,142 +52,92 @@ type rglPlayer struct {
 	}
 }
 
-func getRGL(ctx context.Context, steamid steamid.SID64) (LeagueHistory, error) {
-	var lHist LeagueHistory
+func getRGL(ctx context.Context, steamid steamid.SID64) ([]Season, error) {
+	var seasons []Season
 	resp, err := get(ctx, fmt.Sprintf(rglURL, steamid), nil)
 	if err != nil {
-		return lHist, err
+		return seasons, err
 	}
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return lHist, err
+		return seasons, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	m := rglJSONRx.FindStringSubmatch(string(b))
 	if len(m) != 2 {
-		return lHist, errors.Wrapf(err, "Failed to parse rgl span")
+		return seasons, errors.Wrapf(err, "Failed to parse rgl span")
 	}
-
-	var hist []rglPlayer
-	if err := json.Unmarshal(b, &hist); err != nil {
-		return lHist, errors.Wrapf(err, "Failed to parse rgl json")
+	seasons, err = parseRGL(bytes.NewBufferString(m[1]).Bytes())
+	if err != nil {
+		return seasons, errors.New("failed to parse rgl history")
 	}
-	if err := parseRGL(hist, &lHist); err != nil {
-		return lHist, errors.New("failed to parse rgl history")
-	}
-	return lHist, nil
+	return seasons, nil
 }
 
 //
-func parseRGL(hist []rglPlayer, lHist *LeagueHistory) error {
+func parseRGL(b []byte) ([]Season, error) {
+	var hist []rglPlayer
+	var seasons []Season
+	if err := json.Unmarshal(b, &hist); err != nil {
+		return seasons, errors.Wrapf(err, "Failed to parse rgl json")
+	}
 	for _, l := range hist {
 		for _, h := range l.PlayerHistory {
-			div := parseRGLDivision(h.DivisionName)
+			var s Season
+			div, divStr := parseRGLDivision(h.DivisionName)
 			if div == RGLRankNone {
 				continue
 			}
-			format := parseRGLFormat(h.RegionFormat)
-			if format == RGLFormatNone {
+			formatStr := parseRGLFormat(h.RegionFormat)
+			if formatStr == "" {
 				continue
 			}
+			s.Division = divStr
+			s.DivisionInt = div
+			s.Format = formatStr
+			seasons = append(seasons, s)
 		}
+		sort.Slice(seasons, func(i, j int) bool {
+			return seasons[i].DivisionInt < seasons[j].DivisionInt
+		})
 	}
-	return nil
+	return seasons, nil
 }
 
-func parseRGLDivision(div string) RGLDivision {
+func parseRGLDivision(div string) (Division, string) {
 	switch strings.ToLower(div) {
 	case "invite", "rgl-invite":
-		return RGLRankInvite
+		return RGLRankInvite, "invite"
 	case "div-1", "rgl div-1":
-		return RGLRankDiv1
-	case "div-2 red":
-		return RGLRankDiv2
-	case "div-2 blue":
-		return RGLRankDiv2
+		return RGLRankDiv1, "Div-1"
+	case "div-2 red", "div-2 blue":
+		return RGLRankDiv2, "Div-2"
 	case "open":
-		return RGLRankOpen
+		return RGLRankOpen, "Open"
 	case "intermediate":
-		return RGLRankIntermediate
+		return RGLRankIntermediate, "Intermediate"
 	case "advanced":
-		return RGLRankAdvanced
+		return RGLRankAdvanced, "Advanced"
 	case "main":
-		return RGLRankMain
+		return RGLRankMain, "Main"
 	case "dead teams", "admin placement", "unready", "fresh meat", "one day cup":
 		fallthrough
 	default:
-		return RGLRankNone
+		return RGLRankNone, ""
 	}
 }
 
-func parseRGLFormat(f string) RGLFormat {
+func parseRGLFormat(f string) string {
 	switch strings.ToLower(f) {
 	case "prolander":
-		return RGLFormatPL
+		return "Prolander"
 	case "highlander":
-		return RGLFormatHL
+		return "Highlander"
 	case "trad. sixes":
-		return RGLFormat6s
+		return "6s"
 	case "nr sixes":
-		return RGLFormat6sNR
+		return "NR6s"
 	}
-	return RGLFormatNone
+	return ""
 }
-
-//	dom, _ := goquery.NewDocumentFromReader(strings.NewReader(body))
-//	dom.Find("tbody").Children().Each(func(i int, selection *goquery.Selection) {
-//		if i == 0 {
-//			// Skip header
-//			return
-//		}
-//		curFormat := RGLFormatNone
-//		curRank := RGLRankNone
-//		selection.Children().Each(func(i int, selection *goquery.Selection) {
-//			switch i {
-//			case 0:
-//				fmtTxt := strings.TrimSpace(selection.Text())
-//				switch fmtTxt {
-//				case "Prolander":
-//					curFormat = RGLFormatPL
-//				case "Highlander":
-//					curFormat = RGLFormatHL
-//				default:
-//					curFormat = RGLFormatNone
-//				}
-//			case 3:
-//				divTxt := strings.TrimSpace(selection.Text())
-//				switch divTxt {
-//				case "Invite":
-//					curRank = RGLRankInvite
-//				case "RGL-Invite":
-//					curRank = RGLRankInvite
-//				case "Div-1":
-//					curRank = RGLRankDiv1
-//				case "RGL Div-1":
-//					curRank = RGLRankDiv1
-//				case "Div-2 Red":
-//					curRank = RGLRankDiv2
-//				case "Div-2 Blue":
-//					curRank = RGLRankDiv2
-//				case "Open":
-//					curRank = RGLRankOpen
-//				default:
-//					curRank = RGLRankNone
-//				}
-//				if curFormat > RGLFormatNone {
-//					switch curFormat {
-//					case RGLFormatPL:
-//						if curRank > hist.RGLRankPL {
-//							hist.RGLRankPL = curRank
-//						}
-//					case RGLFormatHL:
-//						if curRank > hist.RGLRankHL {
-//							hist.RGLRankHL = curRank
-//						}
-//					}
-//				}
-//			}
-//		})
-//	})
-//}

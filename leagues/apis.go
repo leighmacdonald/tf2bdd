@@ -11,28 +11,48 @@ import (
 	"regexp"
 	"sync"
 	"tf2bdd/steamid"
-	"time"
 )
 
-type CompHist struct {
-	SteamID    steamid.SID64 `db:"steam_id" json:"-"`
-	RGLRankHL  RGLDivision   `db:"rgl_rank_hl" json:"rgl_rank_hl"`
-	RGLRankPL  RGLDivision   `db:"rgl_rank_pl" json:rgl_rank_pl"`
-	UGCRank4s  UGCRank       `db:"ugc_rank_4s" json:"ugc_rank_4s"`
-	UGCRank6s  UGCRank       `db:"ugc_rank_6s" json:"ugc_rank_6s"`
-	UGCRankHL  UGCRank       `db:"ugc_rank_hl" json:"ugc_rank_hl"`
-	ESEARank6s ESEARank      `db:"esea_rank_6s" json:"esea_rank_6s"`
-	UpdatedOn  time.Time     `db:"updated_on" json:"updated_on"`
+type Division int
+
+// *Rough* mapping of skill for each division for sorting, 0 being invite
+const (
+	RGLRankInvite    Division = 0
+	ETF2LPremiership Division = 0
+
+	UGCRankPlatinum Division = 1
+	ETF2LDiv1       Division = 1
+	RGLRankDiv1     Division = 1
+	RGLRankDiv2     Division = 1
+
+	ETF2LDiv2       Division = 2
+	RGLRankMain     Division = 2
+	RGLRankAdvanced Division = 2
+
+	ETF2LMid    Division = 3
+	UGCRankGold Division = 3
+
+	ETF2LLow            Division = 4
+	RGLRankIntermediate Division = 4
+
+	ETF2LOpen        Division = 5
+	RGLRankOpen      Division = 5
+	UGCRankSilver    Division = 6
+	UGCRankSteel     Division = 7
+	UGCRankIron      Division = 8
+	RGLRankFreshMeat Division = 9
+	RGLRankNone      Division = 10
+	UGCRankNone      Division = 10
+)
+
+type Season struct {
+	League      string   `json:"league"`
+	Division    string   `json:"division"`
+	DivisionInt Division `json:"division_int"`
+	Format      string   `json:"format"`
 }
 
-type LeagueHistory struct {
-	Exists       bool   `json:"exists"`
-	League       string `json:"league"`
-	MaxDivision  string `json:"max_division"`
-	LastDivision string `json:"last_division"`
-}
-
-type LeagueQueryFunc func(ctx context.Context, steamid steamid.SID64) (LeagueHistory, error)
+type LeagueQueryFunc func(ctx context.Context, steamid steamid.SID64) ([]Season, error)
 
 var (
 	reETF2L   *regexp.Regexp
@@ -40,12 +60,11 @@ var (
 )
 
 func get(ctx context.Context, url string, recv interface{}) (*http.Response, error) {
-	c, cancel := context.WithTimeout(ctx, time.Second*5)
-	defer cancel()
-	req, err := http.NewRequestWithContext(c, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{
 		// Don't follow redirects
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -54,18 +73,19 @@ func get(ctx context.Context, url string, recv interface{}) (*http.Response, err
 	}
 	r, err2 := client.Do(req)
 	if err2 != nil {
-		return nil, errors.Wrapf(err, "error during get: %v", err2)
+		return nil, errors.Wrapf(err2, "error during get: %v", err2)
 	}
-	defer func() {
-		if err := r.Body.Close(); err != nil {
-			log.Errorf("Failed to close response body: %v", err)
-		}
-	}()
-	body, err3 := ioutil.ReadAll(r.Body)
-	if err3 != nil {
-		return nil, errors.Wrapf(err, "error reading stream: %v", err3)
-	}
+
 	if recv != nil {
+		body, err3 := ioutil.ReadAll(r.Body)
+		if err3 != nil {
+			return nil, errors.Wrapf(err, "error reading stream: %v", err3)
+		}
+		defer func() {
+			if err := r.Body.Close(); err != nil {
+				log.Errorf("Failed to close response body: %v", err)
+			}
+		}()
 		if err := json.Unmarshal(body, &recv); err != nil {
 			return r, errors.Wrapf(err, "Failed to decode json: %v", err)
 		}
@@ -73,19 +93,21 @@ func get(ctx context.Context, url string, recv interface{}) (*http.Response, err
 	return r, nil
 }
 
-func getTF2Center(ctx context.Context, steamID steamid.SID64) (LeagueHistory, error) {
-	lHist := LeagueHistory{
-		League: "TF2Center",
-	}
+func getTF2Center(ctx context.Context, steamID steamid.SID64) ([]Season, error) {
+	var s []Season
 	r, err := get(ctx, fmt.Sprintf("https://tf2center.com/profile/%d", steamID), nil)
 	if err != nil {
-		return lHist, errors.Wrapf(err, "Failed to get tf2center history")
+		return s, errors.Wrapf(err, "Failed to get tf2center history")
 	}
-	defer func() {
-		_ = r.Body.Close()
-	}()
-	lHist.Exists = r.StatusCode == http.StatusOK
-	return lHist, nil
+	if r.StatusCode == http.StatusOK {
+		s = append(s, Season{
+			League:      "TF2Center",
+			Division:    "PUG",
+			DivisionInt: 9,
+			Format:      "",
+		})
+	}
+	return s, nil
 }
 
 func getOzFortress(steamID steamid.SID64) bool {
@@ -98,26 +120,25 @@ func getOzFortress(steamID steamid.SID64) bool {
 	return r.StatusCode == http.StatusOK
 }
 
-func FetchAll(ctx context.Context, steam steamid.SID64) []LeagueHistory {
+func FetchAll(ctx context.Context, steam steamid.SID64) []Season {
 	var (
 		wg      sync.WaitGroup
-		results []LeagueHistory
+		results []Season
 	)
 	mu := &sync.RWMutex{}
-	c, cancel := context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
-	for _, f := range []LeagueQueryFunc{getRGL, getUGC, getTF2Center, getESEA} {
+	for _, f := range []LeagueQueryFunc{getRGL, getUGC, getTF2Center, getETF2L} {
 		wg.Add(1)
 		fn := f
 		go func() {
 			defer wg.Done()
-			lHist, err := fn(c, steam)
+			lHist, err := fn(ctx, steam)
 			if err != nil {
 				log.Warnf("Failed to get league data: %v", err)
+			} else {
+				mu.Lock()
+				results = append(results, lHist...)
+				mu.Unlock()
 			}
-			mu.Lock()
-			results = append(results, lHist)
-			mu.Unlock()
 		}()
 	}
 	wg.Wait()

@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"tf2bdd/leagues"
 	"tf2bdd/steamid"
 	"time"
 )
@@ -86,6 +87,8 @@ type App struct {
 	ids      map[steamid.SID64]Player
 	idsMu    *sync.RWMutex
 	ctx      context.Context
+	// Use idsMu lock
+	compHist map[steamid.SID64][]leagues.Season
 }
 
 func NewApp(ctx context.Context, dbPath string, authKeys []string) (*App, error) {
@@ -97,11 +100,16 @@ func NewApp(ctx context.Context, dbPath string, authKeys []string) (*App, error)
 	if err := loadPlayers(ctx, db, players); err != nil {
 		return nil, err
 	}
+	compHist := make(map[steamid.SID64][]leagues.Season)
+	if err := loadSeasons(ctx, db, compHist); err != nil {
+		return nil, err
+	}
 	return &App{
 		db:       db,
 		authKeys: authKeys,
 		ids:      players,
 		idsMu:    &sync.RWMutex{},
+		compHist: compHist,
 		ctx:      context.Background(),
 	}, nil
 }
@@ -117,6 +125,21 @@ func newSteamIDResp(players []Player) masterListResp {
 		Schema:  schemaURL,
 		Players: players,
 	}
+}
+
+func (a *App) handleGetCompHist(c *gin.Context) {
+	sid := steamid.StringToSID64(c.Param("sid"))
+	if !sid.Valid() {
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{Error: "Invalid steamid"})
+		return
+	}
+	_, found := a.compHist[sid]
+	if !found {
+		ctx, cancel := context.WithTimeout(a.ctx, time.Second*25)
+		defer cancel()
+		a.compHist[sid] = leagues.FetchAll(ctx, sid)
+	}
+	c.JSON(http.StatusOK, a.compHist[sid])
 }
 
 func (a *App) handleGetSteamIDS(c *gin.Context) {
@@ -249,6 +272,7 @@ func NewRouter(a *App) *gin.Engine {
 	r := gin.New()
 	r.Use(ginlogrus.Logger(log))
 	r.GET("/v1/steamids", a.handleGetSteamIDS)
+	r.GET("/v1/comp/:sid", a.handleGetCompHist)
 	authed := r.Group("/", a.AuthRequired())
 	authed.POST("/v1/steamids", a.handleAddSteamID)
 	return r
