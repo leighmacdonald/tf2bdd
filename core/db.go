@@ -8,24 +8,17 @@ import (
 	"strings"
 	"tf2bdd/leagues"
 	"tf2bdd/steamid"
-	"time"
 )
 
 func openDB(ctx context.Context, dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Could not open database: %v", err)
-	}
-	c, cancel := context.WithTimeout(ctx, time.Second*5)
-	stmt, err := db.PrepareContext(c, `
-		CREATE TABLE IF NOT EXISTS player (
+	const (
+		players = `CREATE TABLE IF NOT EXISTS player (
 		    steamid BIGINT PRIMARY KEY,
 		    attributes TEXT,
 		    last_seen BIGINT,
 		    last_name TEXT
-		);
-
-		CREATE TABLE IF NOT EXISTS comp (
+		);`
+		comp = `CREATE TABLE IF NOT EXISTS comp (
 		    comp_id INT PRIMARY KEY,
 		    steamid BIGINT NOT NULL,
 		    league TEXT NOT NULL,
@@ -34,14 +27,21 @@ func openDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 		    format TEXT NOT NULL,
 		    updated_on BIGINT NOT NULL,
 		    FOREIGN KEY (steamid) REFERENCES player(steamid) ON DELETE CASCADE ON UPDATE CASCADE
-		);`)
-	defer cancel()
+		);`
+	)
+	db, err := sql.Open("sqlite3", dbPath+"?multiStatements=true")
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to setup create table stmt: %v", err)
+		return nil, errors.Wrapf(err, "Could not open database: %v", err)
 	}
-	_, err = stmt.ExecContext(c)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create table: %v", err)
+	for _, table := range []string{players, comp} {
+		stmt, err := db.PrepareContext(ctx, table)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to setup create table stmt: %v", err)
+		}
+		_, err = stmt.ExecContext(ctx)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create table: %v", err)
+		}
 	}
 	return db, nil
 }
