@@ -45,5 +45,5 @@ func TestRGL(t *testing.T) {
 	require.NoError(t, err, "Could not open test file")
 	var resp RGLResponse
 	require.NoError(t, json.Unmarshal(b, &resp))
-	require.NoError(t, parseRGLRank(&resp))
+	require.NoError(t, parseRGLFormat(&resp))
 }

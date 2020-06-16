@@ -7,25 +7,34 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"regexp"
+	"strings"
 	"tf2bdd/steamid"
-)
-
-type RGLRank int
-
-const (
-	RGLRankNone   RGLRank = 0
-	RGLRankOpen   RGLRank = 1
-	RGLRankDiv2   RGLRank = 2
-	RGLRankDiv1   RGLRank = 3
-	RGLRankInvite RGLRank = 4
 )
 
 type RGLDivision int
 
 const (
-	RGLFormatNone RGLDivision = 0
-	RGLFormatPL   RGLDivision = 1
-	RGLFormatHL   RGLDivision = 2
+	RGLRankNone         RGLDivision = 0
+	RGLRankUnready      RGLDivision = 0
+	RGLRankFreshMeat    RGLDivision = 1
+	RGLRankOpen         RGLDivision = 1
+	RGLRankMain         RGLDivision = 2
+	RGLRankIntermediate RGLDivision = 3
+	RGLRankAdvanced     RGLDivision = 4
+
+	RGLRankDiv2
+	RGLRankDiv1
+	RGLRankInvite
+)
+
+type RGLFormat int
+
+const (
+	RGLFormatNone RGLFormat = iota
+	RGLFormatPL
+	RGLFormatHL
+	RGLFormat6s
+	RGLFormat6sNR
 )
 
 const (
@@ -40,7 +49,7 @@ func init() {
 	rglJSONRx = regexp.MustCompile(`<span id="lblOutput">(.+?)<\/span>`)
 }
 
-type RGLResponse []struct {
+type rglPlayer struct {
 	SteamID       string `json:"SteamId"`
 	CurrentAlias  string `json:"CurrentAlias"`
 	PlayerHistory []struct {
@@ -64,7 +73,7 @@ type RGLResponse []struct {
 		Loses        int         `json:"Loses"`
 		AmtWon       interface{} `json:"AmtWon"`
 		EndRank      interface{} `json:"EndRank"`
-	} `json:"PlayerHistory"`
+	}
 }
 
 func getRGL(ctx context.Context, steamid steamid.SID64) (LeagueHistory, error) {
@@ -84,20 +93,70 @@ func getRGL(ctx context.Context, steamid steamid.SID64) (LeagueHistory, error) {
 		return lHist, errors.Wrapf(err, "Failed to parse rgl span")
 	}
 
-	var hist RGLResponse
+	var hist []rglPlayer
 	if err := json.Unmarshal(b, &hist); err != nil {
 		return lHist, errors.Wrapf(err, "Failed to parse rgl json")
 	}
-	if err := parseRGLRank(&hist); err != nil {
+	if err := parseRGL(hist, &lHist); err != nil {
 		return lHist, errors.New("failed to parse rgl history")
 	}
-
 	return lHist, nil
 }
 
 //
-func parseRGLRank(hist *RGLResponse) error {
+func parseRGL(hist []rglPlayer, lHist *LeagueHistory) error {
+	for _, l := range hist {
+		for _, h := range l.PlayerHistory {
+			div := parseRGLDivision(h.DivisionName)
+			if div == RGLRankNone {
+				continue
+			}
+			format := parseRGLFormat(h.RegionFormat)
+			if format == RGLFormatNone {
+				continue
+			}
+		}
+	}
 	return nil
+}
+
+func parseRGLDivision(div string) RGLDivision {
+	switch strings.ToLower(div) {
+	case "invite", "rgl-invite":
+		return RGLRankInvite
+	case "div-1", "rgl div-1":
+		return RGLRankDiv1
+	case "div-2 red":
+		return RGLRankDiv2
+	case "div-2 blue":
+		return RGLRankDiv2
+	case "open":
+		return RGLRankOpen
+	case "intermediate":
+		return RGLRankIntermediate
+	case "advanced":
+		return RGLRankAdvanced
+	case "main":
+		return RGLRankMain
+	case "dead teams", "admin placement", "unready", "fresh meat", "one day cup":
+		fallthrough
+	default:
+		return RGLRankNone
+	}
+}
+
+func parseRGLFormat(f string) RGLFormat {
+	switch strings.ToLower(f) {
+	case "prolander":
+		return RGLFormatPL
+	case "highlander":
+		return RGLFormatHL
+	case "trad. sixes":
+		return RGLFormat6s
+	case "nr sixes":
+		return RGLFormat6sNR
+	}
+	return RGLFormatNone
 }
 
 //	dom, _ := goquery.NewDocumentFromReader(strings.NewReader(body))

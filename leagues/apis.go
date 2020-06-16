@@ -16,8 +16,8 @@ import (
 
 type CompHist struct {
 	SteamID    steamid.SID64 `db:"steam_id" json:"-"`
-	RGLRankHL  RGLRank       `db:"rgl_rank_hl" json:"rgl_rank_hl"`
-	RGLRankPL  RGLRank       `db:"rgl_rank_pl" json:rgl_rank_pl"`
+	RGLRankHL  RGLDivision   `db:"rgl_rank_hl" json:"rgl_rank_hl"`
+	RGLRankPL  RGLDivision   `db:"rgl_rank_pl" json:rgl_rank_pl"`
 	UGCRank4s  UGCRank       `db:"ugc_rank_4s" json:"ugc_rank_4s"`
 	UGCRank6s  UGCRank       `db:"ugc_rank_6s" json:"ugc_rank_6s"`
 	UGCRankHL  UGCRank       `db:"ugc_rank_hl" json:"ugc_rank_hl"`
