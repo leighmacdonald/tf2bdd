@@ -232,11 +232,13 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 	var sid steamid.SID64
 	if len(msg) > 1 {
-		sid = steamid.ResolveSID64(msg[1])
+		if strings.HasPrefix(msg[1], "http") {
+			msg[1] = fmt.Sprintf("<%s>", msg[1])
+			sid = steamid.ResolveSID64(msg[1])
+		} else {
+			sid = steamid.StringToSID64(msg[1])
+		}
 		if !sid.Valid() {
-			if strings.HasPrefix(msg[1], "http") {
-				msg[1] = fmt.Sprintf("<%s>", msg[1])
-			}
 			sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
 			return
 		}
