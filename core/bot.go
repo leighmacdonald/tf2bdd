@@ -215,7 +215,10 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 	count, found := minArgs[msg[0]]
 	if !found {
-		sendMsg(s, m, fmt.Sprintf("Invalid command: %s", msg[0]))
+		return
+	}
+	if len(msg) < count {
+		sendMsg(s, m, fmt.Sprintf("Command requires at least %d args", count))
 		return
 	}
 	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
@@ -239,10 +242,6 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 	}
 
-	if len(msg) < count {
-		sendMsg(s, m, fmt.Sprintf("Command requires at least %d args", count))
-		return
-	}
 	var cmdErr error
 	switch msg[0] {
 	case "!del":
