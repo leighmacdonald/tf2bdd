@@ -205,15 +205,17 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 	msg := strings.Split(strings.ToLower(m.Content), " ")
-	commands := []string{"!add", "!del", "!count", "!check", "!steamid", "!import"}
-	validCmd := false
-	for _, c := range commands {
-		if c == msg[0] {
-			validCmd = true
-			break
-		}
+	minArgs := map[string]int{
+		"!del":     2,
+		"!check":   2,
+		"!add":     2,
+		"!steamid": 2,
+		"!import":  1,
+		"!count":   1,
 	}
-	if !validCmd {
+	count, found := minArgs[msg[0]]
+	if !found {
+		sendMsg(s, m, fmt.Sprintf("Invalid command: %s", msg[0]))
 		return
 	}
 	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
@@ -235,6 +237,11 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
 			return
 		}
+	}
+
+	if len(msg) < count {
+		sendMsg(s, m, fmt.Sprintf("Command requires at least %d args", count))
+		return
 	}
 	var cmdErr error
 	switch msg[0] {

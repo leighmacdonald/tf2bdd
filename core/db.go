@@ -120,7 +120,6 @@ func loadSeasons(ctx context.Context, db *sql.DB, lh map[steamid.SID64][]leagues
 		if _, exists := lSeasons[sid]; !exists {
 			lSeasons[sid] = []leagues.Season{}
 		}
-
 		lSeasons[sid] = append(lSeasons[sid], s)
 	}
 	lh = lSeasons
