@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/leighmacdonald/steamid"
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -10,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"tf2bdd/core"
-	"tf2bdd/steamid"
 	"time"
 )
 
@@ -55,7 +55,7 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Could not connect to discord: %s", err)
 		}
-		//log.Infof("Add bot linK: %s", core.AddUrl())
+		log.Debugln("Add bot linK: %s", core.AddUrl())
 		core.Wait(ctx, func(ctx context.Context) error {
 			if err := dg.Close(); err != nil {
 				log.Errorf("Failed to properly shutdown discord client: %s", err)

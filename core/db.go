@@ -3,11 +3,11 @@ package core
 import (
 	"context"
 	"database/sql"
+	"github.com/leighmacdonald/steamid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"strings"
 	"tf2bdd/leagues"
-	"tf2bdd/steamid"
 )
 
 func openDB(ctx context.Context, dbPath string) (*sql.DB, error) {

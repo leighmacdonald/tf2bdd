@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/toorop/gin-logrus"
@@ -17,7 +18,6 @@ import (
 	"sync"
 	"syscall"
 	"tf2bdd/leagues"
-	"tf2bdd/steamid"
 	"time"
 )
 
@@ -128,8 +128,8 @@ func newSteamIDResp(players []Player) masterListResp {
 }
 
 func (a *App) handleGetCompHist(c *gin.Context) {
-	sid := steamid.StringToSID64(c.Param("sid"))
-	if !sid.Valid() {
+	sid, err := steamid.StringToSID64(c.Param("sid"))
+	if err != nil || !sid.Valid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{Error: "Invalid steamid"})
 		return
 	}
@@ -158,8 +158,8 @@ func (a *App) handleAddSteamID(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{Error: "Invalid request format"})
 		return
 	}
-	steamID := steamid.StringToSID64(req.SteamID)
-	if !steamID.Valid() {
+	steamID, err := steamid.StringToSID64(req.SteamID)
+	if err != nil || !steamID.Valid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{
 			Error: fmt.Sprintf("Invalid steam id: %s", req.SteamID)})
 		return

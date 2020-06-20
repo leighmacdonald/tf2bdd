@@ -2,6 +2,7 @@ package leagues
 
 import (
 	"context"
+	"github.com/leighmacdonald/steamid"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"tf2bdd/steamid"
 	"time"
 )
 
@@ -56,6 +56,15 @@ func TestETF2L(t *testing.T) {
 	seasons, err := getETF2L(c, 76561198004469267)
 	require.NoError(t, err)
 	require.Greater(t, len(seasons), 2)
+}
+
+func TestLogsTF(t *testing.T) {
+	c, cancel := context.WithTimeout(context.Background(), time.Second*25)
+	defer cancel()
+	seasons, err := getLogsTF(c, 76561198086867244)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(seasons))
+	require.Greater(t, seasons[0].Count, 2100)
 }
 
 func TestFetchAll(t *testing.T) {

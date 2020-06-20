@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"strings"
-	"tf2bdd/steamid"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 func getUGC(ctx context.Context, steam steamid.SID64) ([]Season, error) {
 	var seasons []Season
 	resp, err := get(ctx,
-		fmt.Sprintf("https://www.ugcleague.com/players_page.cfm?player_id=%d", steam), nil)
+		fmt.Sprintf("https://www.ugcleague.com/players_page.cfm?player_id=%d", steam.Int64()), nil)
 	if err != nil {
 		return seasons, errors.Wrapf(err, "Failed to get ugc response: %v", err)
 	}

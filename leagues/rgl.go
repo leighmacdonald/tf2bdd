@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"regexp"
 	"sort"
 	"strings"
-	"tf2bdd/steamid"
 )
 
 const (
@@ -54,7 +54,7 @@ type rglPlayer struct {
 
 func getRGL(ctx context.Context, steamid steamid.SID64) ([]Season, error) {
 	var seasons []Season
-	resp, err := get(ctx, fmt.Sprintf(rglURL, steamid), nil)
+	resp, err := get(ctx, fmt.Sprintf(rglURL, steamid.Int64()), nil)
 	if err != nil {
 		return seasons, err
 	}

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"tf2bdd/steamid"
 	"time"
 )
 
@@ -230,13 +230,23 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		sendMsg(s, m, "Unauthorized")
 		return
 	}
+	c, cancel := context.WithTimeout(a.ctx, time.Second*10)
+	defer cancel()
 	var sid steamid.SID64
 	if len(msg) > 1 {
 		if strings.HasPrefix(msg[1], "http") {
 			msg[1] = fmt.Sprintf("<%s>", msg[1])
-			sid = steamid.ResolveSID64(msg[1])
+			sid, err = steamid.ResolveSID64(c, msg[1])
+			if err != nil {
+				sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+				return
+			}
 		} else {
-			sid = steamid.StringToSID64(msg[1])
+			sid, err = steamid.StringToSID64(msg[1])
+			if err != nil {
+				sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+				return
+			}
 		}
 		if !sid.Valid() {
 			sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))

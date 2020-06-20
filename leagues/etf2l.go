@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/leighmacdonald/steamid"
 	"io/ioutil"
 	"regexp"
 	"strings"
-	"tf2bdd/steamid"
 )
 
 const (
@@ -77,7 +77,7 @@ type ETF2LPlayer struct {
 
 func getETF2L(ctx context.Context, sid steamid.SID64) ([]Season, error) {
 	var seasons []Season
-	url := fmt.Sprintf("https://api.etf2l.org/player/%d", sid)
+	url := fmt.Sprintf("https://api.etf2l.org/player/%d", sid.Int64())
 	var player ETF2LPlayer
 	resp, err := get(ctx, url, nil)
 	if err != nil {

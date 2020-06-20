@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/leighmacdonald/steamid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
-	"tf2bdd/steamid"
 )
 
 type Division int
@@ -50,13 +52,15 @@ type Season struct {
 	Division    string   `json:"division"`
 	DivisionInt Division `json:"division_int"`
 	Format      string   `json:"format"`
+	Count       int      `json:"count"`
 }
 
 type LeagueQueryFunc func(ctx context.Context, steamid steamid.SID64) ([]Season, error)
 
 var (
-	reETF2L   *regexp.Regexp
-	reUGCRank *regexp.Regexp
+	reLOGSResults *regexp.Regexp
+	reETF2L       *regexp.Regexp
+	reUGCRank     *regexp.Regexp
 )
 
 func get(ctx context.Context, url string, recv interface{}) (*http.Response, error) {
@@ -95,7 +99,7 @@ func get(ctx context.Context, url string, recv interface{}) (*http.Response, err
 
 func getTF2Center(ctx context.Context, steamID steamid.SID64) ([]Season, error) {
 	var s []Season
-	r, err := get(ctx, fmt.Sprintf("https://tf2center.com/profile/%d", steamID), nil)
+	r, err := get(ctx, fmt.Sprintf("https://tf2center.com/profile/%d", steamID.Int64()), nil)
 	if err != nil {
 		return s, errors.Wrapf(err, "Failed to get tf2center history")
 	}
@@ -111,7 +115,7 @@ func getTF2Center(ctx context.Context, steamID steamid.SID64) ([]Season, error) 
 }
 
 func getOzFortress(steamID steamid.SID64) bool {
-	r, err := http.Get(fmt.Sprintf("https://warzone.ozfortress.com/users/steam_id/%d", steamID))
+	r, err := http.Get(fmt.Sprintf("https://warzone.ozfortress.com/users/steam_id/%d", steamID.Int64()))
 	if err != nil {
 		log.WithField("sid", steamID).Error("Failed to fetch ozfortress")
 		return false
@@ -120,13 +124,44 @@ func getOzFortress(steamID steamid.SID64) bool {
 	return r.StatusCode == http.StatusOK
 }
 
+func getLogsTF(ctx context.Context, steamid steamid.SID64) ([]Season, error) {
+	var s Season
+	resp, err := get(ctx, fmt.Sprintf("https://logs.tf/profile/%d", steamid.Int64()), nil)
+	if err != nil {
+		return nil, err
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	bStr := string(b)
+	if strings.Contains(bStr, "No logs found.") {
+		return []Season{}, nil
+	}
+	m := reLOGSResults.FindStringSubmatch(bStr)
+	if len(m) != 2 {
+		log.Warnf("Got unexpected results for logs.tf ")
+		return []Season{}, nil
+	}
+	value := strings.ReplaceAll(m[1], ",", "")
+	count, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || count <= 0 {
+		log.Errorf("Failed to parse results count %s: %s", m[1], err)
+		return []Season{}, nil
+	}
+	s.League = "LogsTF"
+	s.Count = int(count)
+	return []Season{s}, nil
+}
+
 func FetchAll(ctx context.Context, steam steamid.SID64) []Season {
 	var (
 		wg      sync.WaitGroup
 		results []Season
 	)
 	mu := &sync.RWMutex{}
-	for _, f := range []LeagueQueryFunc{getRGL, getUGC, getTF2Center, getETF2L} {
+	for _, f := range []LeagueQueryFunc{getLogsTF, getRGL, getUGC, getTF2Center, getETF2L} {
 		wg.Add(1)
 		fn := f
 		go func() {
@@ -146,6 +181,7 @@ func FetchAll(ctx context.Context, steam steamid.SID64) []Season {
 }
 
 func init() {
+	reLOGSResults = regexp.MustCompile(`<p>(\d+|\d+,\d+)\sresults</p>`)
 	reETF2L = regexp.MustCompile(`.org/forum/user/(\d+)`)
 	reUGCRank = regexp.MustCompile(`Season (\d+) (\D+) (\S+)`)
 }

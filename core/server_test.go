@@ -2,14 +2,15 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"github.com/leighmacdonald/steamid"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
-	"tf2bdd/steamid"
 )
 
 const testAuthKey = "123456"
@@ -28,7 +29,9 @@ func TestHandleAddSteamIDBadAuth(t *testing.T) {
 	}
 	reqBadAuth.Header.Set("Authorization", "asdfasdf")
 	w2 := httptest.NewRecorder()
-	NewRouter().ServeHTTP(w2, reqBadAuth)
+	a, err := NewApp(context.Background(), "", []string{})
+	require.NoError(t, err)
+	NewRouter(a).ServeHTTP(w2, reqBadAuth)
 	require.Equal(t, http.StatusUnauthorized, w2.Code)
 }
 
