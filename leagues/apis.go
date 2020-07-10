@@ -59,8 +59,8 @@ type LeagueQueryFunc func(ctx context.Context, steamid steamid.SID64) ([]Season,
 
 var (
 	reLOGSResults *regexp.Regexp
-	reETF2L       *regexp.Regexp
-	reUGCRank     *regexp.Regexp
+	//reETF2L       *regexp.Regexp
+	reUGCRank *regexp.Regexp
 )
 
 func get(ctx context.Context, url string, recv interface{}) (*http.Response, error) {
@@ -114,15 +114,15 @@ func getTF2Center(ctx context.Context, steamID steamid.SID64) ([]Season, error) 
 	return s, nil
 }
 
-func getOzFortress(steamID steamid.SID64) bool {
-	r, err := http.Get(fmt.Sprintf("https://warzone.ozfortress.com/users/steam_id/%d", steamID.Int64()))
-	if err != nil {
-		log.WithField("sid", steamID).Error("Failed to fetch ozfortress")
-		return false
-	}
-	_ = r.Body.Close()
-	return r.StatusCode == http.StatusOK
-}
+//func getOzFortress(steamID steamid.SID64) bool {
+//	r, err := http.Get(fmt.Sprintf("https://warzone.ozfortress.com/users/steam_id/%d", steamID.Int64()))
+//	if err != nil {
+//		log.WithField("sid", steamID).Error("Failed to fetch ozfortress")
+//		return false
+//	}
+//	_ = r.Body.Close()
+//	return r.StatusCode == http.StatusOK
+//}
 
 func getLogsTF(ctx context.Context, steamid steamid.SID64) ([]Season, error) {
 	var s Season
@@ -182,6 +182,6 @@ func FetchAll(ctx context.Context, steam steamid.SID64) []Season {
 
 func init() {
 	reLOGSResults = regexp.MustCompile(`<p>(\d+|\d+,\d+)\sresults</p>`)
-	reETF2L = regexp.MustCompile(`.org/forum/user/(\d+)`)
+	//reETF2L = regexp.MustCompile(`.org/forum/user/(\d+)`)
 	reUGCRank = regexp.MustCompile(`Season (\d+) (\D+) (\S+)`)
 }

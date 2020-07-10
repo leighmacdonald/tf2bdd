@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	baseURL = "https://api.etf2l.org"
+//baseURL = "https://api.etf2l.org"
 )
 
 type Comp struct {

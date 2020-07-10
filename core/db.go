@@ -120,31 +120,31 @@ func loadSeasons(ctx context.Context, db *sql.DB, lh map[steamid.SID64][]leagues
 		if _, exists := lSeasons[sid]; !exists {
 			lSeasons[sid] = []leagues.Season{}
 		}
-		lSeasons[sid] = append(lSeasons[sid], s)
+		lh[sid] = append(lSeasons[sid], s)
 	}
-	lh = lSeasons
+	//lh = lSeasons
 	return nil
 }
 
-func addSeason(ctx context.Context, db *sql.DB, steamID steamid.SID64, seasons []leagues.Season) error {
-	const q = `
-		INSERT INTO comp (steamid, league, division, division_rank, format, updated_on) 
-		VALUES (?,?,?,?,?, strftime('%s','now'))`
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	pc, err := tx.PrepareContext(ctx, q)
-	if err != nil {
-		return err
-	}
-	for _, s := range seasons {
-		if _, err := pc.ExecContext(ctx, q, steamID, s.League, s.Division, s.DivisionInt, s.Format); err != nil {
-			if err := tx.Rollback(); err != nil {
-				return errors.Wrapf(err, "Failed to rollback")
-			}
-			return err
-		}
-	}
-	return nil
-}
+//func addSeason(ctx context.Context, db *sql.DB, steamID steamid.SID64, seasons []leagues.Season) error {
+//	const q = `
+//		INSERT INTO comp (steamid, league, division, division_rank, format, updated_on)
+//		VALUES (?,?,?,?,?, strftime('%s','now'))`
+//	tx, err := db.BeginTx(ctx, nil)
+//	if err != nil {
+//		return err
+//	}
+//	pc, err := tx.PrepareContext(ctx, q)
+//	if err != nil {
+//		return err
+//	}
+//	for _, s := range seasons {
+//		if _, err := pc.ExecContext(ctx, q, steamID, s.League, s.Division, s.DivisionInt, s.Format); err != nil {
+//			if err := tx.Rollback(); err != nil {
+//				return errors.Wrapf(err, "Failed to rollback")
+//			}
+//			return err
+//		}
+//	}
+//	return nil
+//}

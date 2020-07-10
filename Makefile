@@ -22,7 +22,7 @@ testcover:
 	@go test -race -coverprofile c.out $(GO_FLAGS) ./...
 
 lint:
-	@golangci-lint run
+	@$(GOPATH)/bin/golangci-lint run
 
 bench:
 	@go test -run=NONE -bench=. $(GO_FLAGS) ./...
