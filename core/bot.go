@@ -287,7 +287,7 @@ func guildCreate(_ *discordgo.Session, event *discordgo.GuildCreate) {
 	}
 	for _, channel := range event.Guild.Channels {
 		if channel.ID == event.Guild.ID {
-			log.Infof("Connected to new guild: %d", event.Guild.Name)
+			log.Infof("Connected to new guild: %s", event.Guild.Name)
 			return
 		}
 	}

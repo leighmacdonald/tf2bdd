@@ -55,7 +55,7 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Could not connect to discord: %s", err)
 		}
-		log.Debugln("Add bot linK: %s", core.AddUrl())
+		log.Debugf("Add bot linK: %s", core.AddUrl())
 		core.Wait(ctx, func(ctx context.Context) error {
 			if err := dg.Close(); err != nil {
 				log.Errorf("Failed to properly shutdown discord client: %s", err)

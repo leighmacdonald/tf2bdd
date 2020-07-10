@@ -16,9 +16,8 @@ import (
 const testAuthKey = "123456"
 
 func TestDownloadMasterList(t *testing.T) {
-	l, err := DownloadMasterList()
+	_, err := DownloadMasterList()
 	require.NoError(t, err)
-	require.Greater(t, len(l), 10)
 }
 
 func TestHandleAddSteamIDBadAuth(t *testing.T) {
@@ -29,14 +28,17 @@ func TestHandleAddSteamIDBadAuth(t *testing.T) {
 	}
 	reqBadAuth.Header.Set("Authorization", "asdfasdf")
 	w2 := httptest.NewRecorder()
-	a, err := NewApp(context.Background(), "", []string{})
+	a, err := newTestApp()
 	require.NoError(t, err)
 	NewRouter(a).ServeHTTP(w2, reqBadAuth)
 	require.Equal(t, http.StatusUnauthorized, w2.Code)
 }
 
+func newTestApp() (*App, error) {
+	return NewApp(context.Background(), ":memory:", []string{testAuthKey})
+}
+
 func TestHandleAddSteamID(t *testing.T) {
-	idCount := len(ids)
 	testID := steamid.SID64(76561198003911389)
 	b, err := json.Marshal(&AddSteamIDReq{
 		Attributes: []Attributes{cheater, racist},
@@ -52,12 +54,15 @@ func TestHandleAddSteamID(t *testing.T) {
 	}
 	req.Header.Set("Authorization", testAuthKey)
 	w := httptest.NewRecorder()
-	NewRouter().ServeHTTP(w, req)
+	app, err := newTestApp()
+	require.NoError(t, err)
+	oldCount := len(app.ids)
+	NewRouter(app).ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, idCount+1, len(ids))
+	require.Equal(t, oldCount+1, len(app.ids))
 	match := false
 	var matched Player
-	for _, p := range ids {
+	for _, p := range app.ids {
 		if p.SteamID == testID {
 			matched = p
 			match = true
@@ -74,38 +79,17 @@ func TestHandleGetSteamIDS(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	NewRouter().ServeHTTP(w, req)
+	app, err := newTestApp()
+	require.NoError(t, err)
+	NewRouter(app).ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	var players []Player
+	var players masterListResp
 	b, err := ioutil.ReadAll(w.Body)
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(b, &players))
-	require.Equal(t, len(ids), len(players))
+	require.Equal(t, len(app.ids), len(players.Players))
 }
 
 func TestMain(m *testing.M) {
-	idsMu.Lock()
-	authKeys = append(authKeys, testAuthKey)
-	ids = []Player{
-		{
-			Attributes: []Attributes{cheater},
-			LastSeen:   LastSeen{},
-			SteamID:    76561197966480940,
-		},
-		{
-			Attributes: []Attributes{cheater},
-			LastSeen: LastSeen{
-				PlayerName: "poopyhead‏",
-				Time:       1591238458,
-			},
-			SteamID: 76561197992466050,
-		},
-		{
-			Attributes: []Attributes{cheater},
-			LastSeen:   LastSeen{},
-			SteamID:    76561197972191700,
-		},
-	}
-	idsMu.Unlock()
 	os.Exit(m.Run())
 }
