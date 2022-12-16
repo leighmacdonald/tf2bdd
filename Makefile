@@ -7,7 +7,7 @@ fmt:
 	@go fmt . ./...
 
 deps:
-	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.27.0
+	@go get github.com/golangci/golangci-lint/cmd/golangci-lint
 
 build: clean deps fmt lint vet
 	@go build -o tf2bdd
@@ -22,7 +22,7 @@ testcover:
 	@go test -race -coverprofile c.out $(GO_FLAGS) ./...
 
 lint:
-	@$(GOPATH)/bin/golangci-lint run
+	golangci-lint run
 
 bench:
 	@go test -run=NONE -bench=. $(GO_FLAGS) ./...

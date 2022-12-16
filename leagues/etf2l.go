@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/leighmacdonald/steamid"
+	"github.com/leighmacdonald/steamid/v2/steamid"
 	"io/ioutil"
 	"regexp"
 	"strings"
 )
 
 const (
-//baseURL = "https://api.etf2l.org"
+// baseURL = "https://api.etf2l.org"
 )
 
 type Comp struct {

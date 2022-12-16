@@ -3,7 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
-	"github.com/leighmacdonald/steamid"
+	"github.com/leighmacdonald/steamid/v2/steamid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"strings"

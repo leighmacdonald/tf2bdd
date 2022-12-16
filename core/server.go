@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/leighmacdonald/steamid"
+	"github.com/leighmacdonald/steamid/v2/steamid"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/toorop/gin-logrus"
@@ -258,7 +258,7 @@ type HTTPOpts struct {
 
 func DefaultHTTPOpts() *HTTPOpts {
 	return &HTTPOpts{
-		ListenAddr:     ":27015",
+		ListenAddr:     ":8899",
 		UseTLS:         false,
 		Handler:        nil,
 		ReadTimeout:    5 * time.Second,

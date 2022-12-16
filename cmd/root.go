@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/leighmacdonald/steamid"
+	"github.com/leighmacdonald/steamid/v2/steamid"
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -28,7 +28,7 @@ var rootCmd = &cobra.Command{
 		}
 		steamid.SetKey(steamKey)
 		token := os.Getenv("BOT_TOKEN")
-		if token == "" || len(token) != 59 {
+		if token == "" {
 			log.Fatalf("Invalid bot token: %s", token)
 		}
 		ctx := context.Background()
