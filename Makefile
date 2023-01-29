@@ -31,9 +31,9 @@ clean:
 	@go clean $(GO_FLAGS) -i
 
 image:
-	@docker build -t leighmacdonald/tf2bdd:latest .
+	@docker build -t leighmacdonald/tf2bdd:1.0.0 .
 
 runimage:
 	@docker run --rm --name tf2bdd -it \
 		--mount type=bind,source=$(CURDIR)/db.sqlite,target=/app/db.sqlite \
-		leighmacdonald/tf2bdd:latest || true
+		leighmacdonald/tf2bdd:1.0.0 || true

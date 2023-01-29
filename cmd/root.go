@@ -28,7 +28,7 @@ var rootCmd = &cobra.Command{
 		}
 		steamid.SetKey(steamKey)
 		token := os.Getenv("BOT_TOKEN")
-		if token == "" || len(token) != 59 {
+		if token == "" {
 			log.Fatalf("Invalid bot token: %s", token)
 		}
 		ctx := context.Background()

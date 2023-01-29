@@ -5,10 +5,11 @@ RUN go mod download
 COPY . .
 RUN go build
 
-FROM alpine:latest
+FROM golang:latest
+RUN apt update && apt install dumb-init -y
 WORKDIR /app
 COPY --from=build /build/tf2bdd .
 
-EXPOSE 27015
-
+EXPOSE 8899
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["./tf2bdd"]

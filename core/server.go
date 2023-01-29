@@ -39,7 +39,7 @@ const (
 	schemaURL   = "https://raw.githubusercontent.com/PazerOP/tf2_bot_detector/master/schemas/v3/playerlist.schema.json"
 	title       = "@trusted Ban List"
 	description = "Curated list of steamid's created by the @trusted people in the official discord server"
-	updateURL   = "https://tf2bdd.pazer.us/v1/steamids"
+	updateURL   = "https://trusted.roto.lol/v1/steamids"
 )
 
 type ListSource struct {
@@ -258,7 +258,7 @@ type HTTPOpts struct {
 
 func DefaultHTTPOpts() *HTTPOpts {
 	return &HTTPOpts{
-		ListenAddr:     ":27015",
+		ListenAddr:     ":8899",
 		UseTLS:         false,
 		Handler:        nil,
 		ReadTimeout:    5 * time.Second,
