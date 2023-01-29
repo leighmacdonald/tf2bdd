@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/leighmacdonald/steamid"
+	"github.com/leighmacdonald/steamid/v2/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"regexp"
@@ -75,7 +75,6 @@ func getRGL(ctx context.Context, steamid steamid.SID64) ([]Season, error) {
 	return seasons, nil
 }
 
-//
 func parseRGL(b []byte) ([]Season, error) {
 	var hist []rglPlayer
 	var seasons []Season

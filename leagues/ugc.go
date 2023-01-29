@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/leighmacdonald/steamid"
+	"github.com/leighmacdonald/steamid/v2/steamid"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"strings"

@@ -1,9 +1,10 @@
-FROM golang:latest as build
+FROM golang:1.19-alpine as build
 WORKDIR /build
+RUN apk add build-base
 COPY go.sum go.mod ./
 RUN go mod download
 COPY . .
-RUN go build
+RUN go build -o tf2bdd
 
 FROM golang:latest
 RUN apt update && apt install dumb-init -y
