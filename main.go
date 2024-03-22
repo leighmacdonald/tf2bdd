@@ -44,6 +44,11 @@ func run() error {
 		return errors.New("No discord roles defined, please set ROLES")
 	}
 
+	clientID = os.Getenv("BOT_CLIENTID")
+	if clientID == "" {
+		return errors.New("BOT_CLIENTID must be set to your discord bot client id")
+	}
+
 	allowedRoles = roles
 
 	database, errDatabase := openDB("./db.sqlite")

@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 func openDB(dbPath string) (*sql.DB, error) {
-	database, errOpen := sql.Open("sqlite3", dbPath+"?multiStatements=true")
+	database, errOpen := sql.Open("sqlite3", dbPath)
 	if errOpen != nil {
 		return nil, errors.Join(errOpen, errors.New("could not open database"))
 	}

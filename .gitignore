@@ -2,3 +2,5 @@
 /tf2bdd
 *.sqlite
 /tf2bdd.exe
+
+dist/

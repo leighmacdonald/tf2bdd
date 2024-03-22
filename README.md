@@ -10,6 +10,7 @@ the results over a HTTP service to be consumed by any bot detector compatible cl
     $ go build
     $ export STEAM_TOKEN=steam_web_api_token  # Your steam api key, for resolving vanity names
     $ export BOT_TOKEN=discord_bot_token      # Your discord bot token
+    $ export BOT_CLIENTID=12345               # Discord client id
     $ export ROLES=11111111111,222222222      # Roles allowed to use non-readonly commands
     $ ./tf2bdd
   

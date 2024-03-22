@@ -17,12 +17,14 @@ import (
 )
 
 const (
-	perms    = 125952
-	clientID = 720846565454905356
-	addFmt   = "https://discord.com/oauth2/authorize?client_id=%d&scope=bot&permissions=%d"
+	perms  = 125952
+	addFmt = "https://discord.com/oauth2/authorize?client_id=%s&scope=bot&permissions=%d"
 )
 
-var allowedRoles []string
+var (
+	allowedRoles []string
+	clientID     string
+)
 
 func discordAddURL() string {
 	return fmt.Sprintf(addFmt, clientID, perms)
