@@ -1,16 +1,17 @@
-package core
+package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/leighmacdonald/steamid/v2/steamid"
-	"github.com/pkg/errors"
-	"io/ioutil"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/leighmacdonald/steamid/v4/steamid"
 )
 
 const (
@@ -27,46 +28,53 @@ func AddUrl() string {
 
 // the "ready" event from Discord.
 func ready(_ *discordgo.Session, _ *discordgo.Ready) {
-	log.Infof("Connected to discord successfully")
+	slog.Info("Connected to discord successfully")
 }
 
 func NewBot(app *App, token string) (*discordgo.Session, error) {
-	dg, err := discordgo.New("Bot " + token)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create bot instance: %s", err)
+	dg, errDiscord := discordgo.New("Bot " + token)
+	if errDiscord != nil {
+		return nil, errors.Join(errDiscord, errors.New("dailed to create bot instance: %s"))
 	}
+
 	dg.AddHandler(ready)
 	dg.AddHandler(app.messageCreate)
 	dg.AddHandler(guildCreate)
-	if err := dg.Open(); err != nil {
-		return nil, errors.Wrapf(err, "Could not connect to discord: %s", err)
+
+	if errOpenDiscord := dg.Open(); errOpenDiscord != nil {
+		return nil, errors.Join(errOpenDiscord, errors.New("could not connect to discord"))
 	}
+
 	return dg, nil
 }
 
 func memberHasRole(s *discordgo.Session, guildID string, userID string) (bool, error) {
-	member, err := s.State.Member(guildID, userID)
-	if err != nil {
-		if member, err = s.GuildMember(guildID, userID); err != nil {
-			return false, err
+	member, errMember := s.State.Member(guildID, userID)
+	if errMember != nil {
+		if member, errMember = s.GuildMember(guildID, userID); errMember != nil {
+			return false, errMember
 		}
 	}
 	for _, roleID := range member.Roles {
-		role, err := s.State.Role(guildID, roleID)
-		if err != nil {
-			return false, err
+		role, errRole := s.State.Role(guildID, roleID)
+		if errRole != nil {
+			return false, errRole
 		}
+
 		allowed := false
 		for _, ar := range allowedRoles {
 			if role.ID == ar {
 				allowed = true
+
 				break
 			}
 		}
+
 		if allowed {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
@@ -77,15 +85,16 @@ func (a *App) count(s *discordgo.Session, m *discordgo.MessageCreate) {
 	sendMsg(s, m, fmt.Sprintf("Total steamids tracked: %d", counts))
 }
 
-func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64, msg []string) error {
+func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID, msg []string) error {
 	a.idsMu.RLock()
 	for _, existing := range a.ids {
 		if existing.SteamID == sid {
 			a.idsMu.RUnlock()
-			return errors.Errorf("Duplicate steam id: %d", sid)
+			return fmt.Errorf("duplicate steam id: %d", sid.Int64())
 		}
 	}
 	a.idsMu.RUnlock()
+
 	var attrs []Attributes
 	if len(msg) == 2 {
 		attrs = append(attrs, cheater)
@@ -101,7 +110,7 @@ func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.
 			case "exploiter":
 				attrs = append(attrs, exploiter)
 			default:
-				return errors.Errorf("Unknown tag: %s", msg[i])
+				return fmt.Errorf("unknown tag: %s", msg[i])
 			}
 		}
 	}
@@ -112,45 +121,49 @@ func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.
 		},
 		SteamID: sid,
 	}
+
 	if err := addPlayer(a.ctx, a.db, player); err != nil {
 		if err.Error() == "UNIQUE constraint failed: player.steamid" {
-			return errors.Errorf("Duplicate steam id: %d", sid)
+			return fmt.Errorf("duplicate steam id: %d", sid.Int64())
 		} else {
-			log.Errorf("Failed to add player: %v", err)
-			return errors.Errorf("Oops")
+			slog.Error("Failed to add player", slog.String("error", err.Error()))
+			return fmt.Errorf("oops")
 		}
 	}
+
 	a.idsMu.Lock()
 	a.ids[player.SteamID] = player
 	a.idsMu.Unlock()
+
 	sendMsg(s, m, fmt.Sprintf("Added new entry successfully: %d", sid))
+
 	return nil
 }
-func (a *App) check(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) error {
+
+func (a *App) check(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID) error {
 	a.idsMu.RLock()
 	_, found := a.ids[sid]
 	a.idsMu.RUnlock()
 	if !found {
-		return errors.Errorf("Steam id doesnt exist in database: %d", sid)
+		return fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
 	}
 	sendMsg(s, m, fmt.Sprintf(":skull_crossbones: %d is a confirmed baddie :skull_crossbones: "+
-		"http://steamcommunity.com/profiles/%d", sid.Int64(), sid.Int64()))
+		"https://steamcommunity.com/profiles/%d", sid.Int64(), sid.Int64()))
 	return nil
 }
 
-func (a *App) steamid(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) {
+func (a *App) steamid(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID) {
 	var b strings.Builder
 	b.WriteString("```")
 	b.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
-	b.WriteString(fmt.Sprintf("Steam32: %d\n", steamid.SID64ToSID32(sid)))
-	b.WriteString(fmt.Sprintf("Steam3:  %s", steamid.SID64ToSID3(sid)))
+	b.WriteString(fmt.Sprintf("Steam32: %d\n", sid.AccountID))
+	b.WriteString(fmt.Sprintf("Steam3:  %s", sid.Steam3()))
 	b.WriteString("```")
 	b.WriteString(fmt.Sprintf("Profile: <https://steamcommunity.com/profiles/%d>", sid.Int64()))
 	sendMsg(s, m, b.String())
 }
 
 func (a *App) importJSON(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	log.Debugln(m)
 	if len(m.Attachments) == 0 {
 		return errors.New("Must attach json file to import")
 	}
@@ -161,41 +174,47 @@ func (a *App) importJSON(s *discordgo.Session, m *discordgo.MessageCreate) error
 	for _, attach := range m.Attachments {
 		req, err := http.NewRequestWithContext(c, "GET", attach.URL, nil)
 		if err != nil {
-			return errors.Wrapf(err, "failed to setup http request")
+			return errors.Join(err, errors.New("failed to setup http request"))
 		}
+
 		resp, err := client.Do(req)
 		if err != nil {
-			return errors.Wrapf(err, "failed to download file")
-		}
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return errors.Wrapf(err, "failed to read response body")
+			return errors.Join(err, errors.New("failed to download file"))
 		}
 		_ = resp.Body.Close()
+
 		var playerList masterListResp
-		if err := json.Unmarshal(b, &playerList); err != nil {
-			return errors.Wrapf(err, "failed to decode file")
+		if errDecode := json.NewDecoder(resp.Body).Decode(&playerList); errDecode != nil {
+			return errors.Join(errDecode, errors.New("failed to decode file"))
 		}
+
 		added += a.LoadMasterIDS(playerList.Players)
 	}
+
 	sendMsg(s, m, fmt.Sprintf("Loaded %d new players", added))
+
 	return nil
 }
 
-func (a *App) del(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SID64) error {
+func (a *App) del(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID) error {
 	a.idsMu.RLock()
 	_, found := a.ids[sid]
 	a.idsMu.RUnlock()
+
 	if !found {
-		return errors.Errorf("Steam id doesnt exist in database: %d", sid)
+		return fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
 	}
+
 	if err := dropPlayer(a.ctx, a.db, sid); err != nil {
-		return errors.Errorf("Error dropping player: %s", err.Error())
+		return fmt.Errorf("error dropping player: %w", err)
 	}
+
 	a.idsMu.Lock()
 	delete(a.ids, sid)
 	a.idsMu.Unlock()
+
 	sendMsg(s, m, fmt.Sprintf("Dropped entry successfully: %d", sid))
+
 	return nil
 }
 
@@ -213,43 +232,53 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		"!import":  1,
 		"!count":   1,
 	}
+
 	count, found := minArgs[msg[0]]
 	if !found {
 		return
 	}
+
 	if len(msg) < count {
 		sendMsg(s, m, fmt.Sprintf("Command requires at least %d args", count))
 		return
 	}
+
 	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
 	if err != nil {
-		log.Errorf("Failed to lookup role data")
+		slog.Error("Failed to lookup role data")
 		return
 	}
+
 	if !allowed && msg[0] != "!steamid" && msg[0] != "!count" {
 		sendMsg(s, m, "Unauthorized")
 		return
 	}
+
 	c, cancel := context.WithTimeout(a.ctx, time.Second*10)
 	defer cancel()
-	var sid steamid.SID64
+
+	var sid steamid.SteamID
 	if len(msg) > 1 {
 		if strings.HasPrefix(msg[1], "http") {
 			msg[1] = fmt.Sprintf("<%s>", msg[1])
-			sid, err = steamid.ResolveSID64(c, msg[1])
-			if err != nil {
+			resolvedSid, errResolve := steamid.Resolve(c, msg[1])
+			if errResolve != nil {
 				sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+
 				return
 			}
+			sid = resolvedSid
 		} else {
-			sid, err = steamid.StringToSID64(msg[1])
-			if err != nil {
+			sid = steamid.New(msg[1])
+			if !sid.Valid() {
 				sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+
 				return
 			}
 		}
 		if !sid.Valid() {
 			sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+
 			return
 		}
 	}
@@ -269,6 +298,7 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	case "!import":
 		cmdErr = a.importJSON(s, m)
 	}
+
 	if cmdErr != nil {
 		sendMsg(s, m, cmdErr.Error())
 	}
@@ -276,7 +306,7 @@ func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 func sendMsg(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
 	if _, err := s.ChannelMessageSend(m.ChannelID, msg); err != nil {
-		log.Errorf(`Failed to send message "%s": %s`, msg, err)
+		slog.Error(`Failed to send message "%s": %s`, slog.String("msg", msg), slog.String("error", err.Error()))
 	}
 }
 
@@ -287,7 +317,7 @@ func guildCreate(_ *discordgo.Session, event *discordgo.GuildCreate) {
 	}
 	for _, channel := range event.Guild.Channels {
 		if channel.ID == event.Guild.ID {
-			log.Infof("Connected to new guild: %s", event.Guild.Name)
+			slog.Info("Connected to new guild", slog.String("guild", event.Guild.Name))
 			return
 		}
 	}

@@ -1,4 +1,4 @@
-package core
+package main
 
 import (
 	"context"
@@ -6,19 +6,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/leighmacdonald/steamid/v2/steamid"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"github.com/toorop/gin-logrus"
-	"io/ioutil"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-	"tf2bdd/leagues"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/leighmacdonald/steamid/v4/steamid"
+	"github.com/pkg/errors"
 )
 
 type Attributes string
@@ -28,10 +26,6 @@ const (
 	racist    Attributes = "racist"
 	sus       Attributes = "suspicious"
 	exploiter Attributes = "exploiter"
-)
-
-var (
-	log *logrus.Logger
 )
 
 const (
@@ -68,9 +62,9 @@ type LastSeen struct {
 }
 
 type Player struct {
-	SteamID    steamid.SID64 `json:"steamid"`
-	Attributes []Attributes  `json:"attributes"`
-	LastSeen   LastSeen      `json:"last_seen,omitempty"`
+	SteamID    steamid.SteamID `json:"steamid"`
+	Attributes []Attributes    `json:"attributes"`
+	LastSeen   LastSeen        `json:"last_seen,omitempty"`
 }
 
 type ErrResp struct {
@@ -82,35 +76,27 @@ type SucResp struct {
 }
 
 type App struct {
-	db       *sql.DB
-	authKeys []string
-	ids      map[steamid.SID64]Player
-	idsMu    *sync.RWMutex
-	ctx      context.Context
-	// Use idsMu lock
-	compHist map[steamid.SID64][]leagues.Season
+	db    *sql.DB
+	ids   map[steamid.SteamID]Player
+	idsMu *sync.RWMutex
+	ctx   context.Context
 }
 
-func NewApp(ctx context.Context, dbPath string, authKeys []string) (*App, error) {
+func NewApp(ctx context.Context, dbPath string) (*App, error) {
 	db, err := openDB(ctx, dbPath)
 	if err != nil {
 		return nil, err
 	}
-	players := make(map[steamid.SID64]Player)
+	players := make(map[steamid.SteamID]Player)
 	if err := loadPlayers(ctx, db, players); err != nil {
 		return nil, err
 	}
-	compHist := make(map[steamid.SID64][]leagues.Season)
-	if err := loadSeasons(ctx, db, compHist); err != nil {
-		return nil, err
-	}
+
 	return &App{
-		db:       db,
-		authKeys: authKeys,
-		ids:      players,
-		idsMu:    &sync.RWMutex{},
-		compHist: compHist,
-		ctx:      context.Background(),
+		db:    db,
+		ids:   players,
+		idsMu: &sync.RWMutex{},
+		ctx:   context.Background(),
 	}, nil
 }
 
@@ -125,21 +111,6 @@ func newSteamIDResp(players []Player) masterListResp {
 		Schema:  schemaURL,
 		Players: players,
 	}
-}
-
-func (a *App) handleGetCompHist(c *gin.Context) {
-	sid, err := steamid.StringToSID64(c.Param("sid"))
-	if err != nil || !sid.Valid() {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{Error: "Invalid steamid"})
-		return
-	}
-	_, found := a.compHist[sid]
-	if !found {
-		ctx, cancel := context.WithTimeout(a.ctx, time.Second*25)
-		defer cancel()
-		a.compHist[sid] = leagues.FetchAll(ctx, sid)
-	}
-	c.JSON(http.StatusOK, a.compHist[sid])
 }
 
 func (a *App) handleGetSteamIDS(c *gin.Context) {
@@ -158,10 +129,11 @@ func (a *App) handleAddSteamID(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{Error: "Invalid request format"})
 		return
 	}
-	steamID, err := steamid.StringToSID64(req.SteamID)
-	if err != nil || !steamID.Valid() {
+	steamID := steamid.New(req.SteamID)
+	if !steamID.Valid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrResp{
-			Error: fmt.Sprintf("Invalid steam id: %s", req.SteamID)})
+			Error: fmt.Sprintf("Invalid steam id: %s", req.SteamID),
+		})
 		return
 	}
 	a.idsMu.Lock()
@@ -173,24 +145,6 @@ func (a *App) handleAddSteamID(c *gin.Context) {
 	c.JSON(200, SucResp{Message: fmt.Sprintf("Added successfully: %s", req.SteamID)})
 }
 
-func (a *App) AuthRequired() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		isBaddie := true
-		authKey := c.GetHeader("Authorization")
-		for _, k := range a.authKeys {
-			if k == authKey {
-				isBaddie = false
-				break
-			}
-		}
-		if isBaddie {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrResp{Error: "Hi telegram."})
-			return
-		}
-		c.Next()
-	}
-}
-
 func DownloadMasterList() ([]Player, error) {
 	resp, err := http.Get(masterList)
 	if err != nil {
@@ -199,18 +153,16 @@ func DownloadMasterList() ([]Player, error) {
 	if resp.StatusCode != 200 {
 		return nil, errors.Wrapf(err, "Invalid status code from gh: %d", resp.StatusCode)
 	}
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to read response body: %d", err)
-	}
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Errorf("Failed to close response body: %s", err)
+			slog.Error("Failed to close response body", slog.String("error", err.Error()))
 		}
 	}()
+
 	var listResp masterListResp
-	if err := json.Unmarshal(b, &listResp); err != nil {
-		return nil, errors.Wrapf(err, "Failed to decide master list: %s", err)
+	if errDecode := json.NewDecoder(resp.Body).Decode(&listResp); errDecode != nil {
+		return nil, errors.Wrapf(errDecode, "Failed to decide master list: %s", errDecode)
 	}
 	var p []Player
 	for _, mlP := range listResp.Players {
@@ -233,7 +185,7 @@ func (a *App) LoadMasterIDS(ml []Player) int {
 			if err.Error() == "UNIQUE constraint failed: player.steamid" {
 				continue
 			}
-			log.Errorf(err.Error())
+			slog.Error(err.Error())
 		}
 		added++
 	}
@@ -242,7 +194,7 @@ func (a *App) LoadMasterIDS(ml []Player) int {
 		a.ids[p.SteamID] = p
 	}
 	a.idsMu.Unlock()
-	log.Infof("Downloaded %d steamids", len(ml))
+	slog.Info("Downloaded master list success")
 	return added
 }
 
@@ -264,46 +216,23 @@ func DefaultHTTPOpts() *HTTPOpts {
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20,
-		TLSConfig:      nil,
 	}
 }
 
 func NewRouter(a *App) *gin.Engine {
 	r := gin.New()
-	r.Use(ginlogrus.Logger(log))
 	r.GET("/v1/steamids", a.handleGetSteamIDS)
-	r.GET("/v1/comp/:sid", a.handleGetCompHist)
-	authed := r.Group("/", a.AuthRequired())
-	authed.POST("/v1/steamids", a.handleAddSteamID)
 	return r
 }
 
 func NewHTTPServer(opts *HTTPOpts) *http.Server {
-	var tlsCfg *tls.Config
-	if opts.UseTLS && opts.TLSConfig == nil {
-		tlsCfg = &tls.Config{
-			MinVersion:               tls.VersionTLS12,
-			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-			PreferServerCipherSuites: true,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-			},
-		}
-	} else {
-		tlsCfg = nil
-	}
-	srv := http.Server{
+	return &http.Server{
 		Addr:           opts.ListenAddr,
 		Handler:        opts.Handler,
-		TLSConfig:      tlsCfg,
 		ReadTimeout:    opts.ReadTimeout,
 		WriteTimeout:   opts.WriteTimeout,
 		MaxHeaderBytes: opts.MaxHeaderBytes,
 	}
-	return &srv
 }
 
 func Wait(ctx context.Context, f func(ctx context.Context) error) {
@@ -313,13 +242,6 @@ func Wait(ctx context.Context, f func(ctx context.Context) error) {
 	c, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second*5))
 	defer cancel()
 	if err := f(c); err != nil {
-		log.Errorf("Error closing servers gracefully; %s", err)
+		slog.Error("Error closing servers gracefully", slog.String("error", err.Error()))
 	}
-}
-
-func init() {
-	log = logrus.New()
-	log.SetFormatter(&logrus.TextFormatter{
-		ForceColors: true,
-	})
 }
