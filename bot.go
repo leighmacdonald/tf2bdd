@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,14 +32,14 @@ func ready(_ *discordgo.Session, _ *discordgo.Ready) {
 	slog.Info("Connected to discord successfully")
 }
 
-func NewBot(app *App, token string) (*discordgo.Session, error) {
+func NewBot(ctx context.Context, database *sql.DB, token string) (*discordgo.Session, error) {
 	dg, errDiscord := discordgo.New("Bot " + token)
 	if errDiscord != nil {
 		return nil, errors.Join(errDiscord, errors.New("dailed to create bot instance: %s"))
 	}
 
 	dg.AddHandler(ready)
-	dg.AddHandler(app.messageCreate)
+	dg.AddHandler(messageCreate(ctx, database))
 	dg.AddHandler(guildCreate)
 
 	if errOpenDiscord := dg.Open(); errOpenDiscord != nil {
@@ -78,23 +79,15 @@ func memberHasRole(s *discordgo.Session, guildID string, userID string) (bool, e
 	return false, nil
 }
 
-func (a *App) count(s *discordgo.Session, m *discordgo.MessageCreate) {
-	a.idsMu.RLock()
-	counts := len(a.ids)
-	a.idsMu.RUnlock()
-	sendMsg(s, m, fmt.Sprintf("Total steamids tracked: %d", counts))
+func totalEntries(ctx context.Context, database *sql.DB) (string, error) {
+	total, err := getCount(ctx, database)
+	if err != nil {
+		return "", fmt.Errorf("failed to get count: %w", err)
+	}
+	return fmt.Sprintf("Total steamids tracked: %d", total), nil
 }
 
-func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID, msg []string) error {
-	a.idsMu.RLock()
-	for _, existing := range a.ids {
-		if existing.SteamID == sid {
-			a.idsMu.RUnlock()
-			return fmt.Errorf("duplicate steam id: %d", sid.Int64())
-		}
-	}
-	a.idsMu.RUnlock()
-
+func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []string) (string, error) {
 	var attrs []Attributes
 	if len(msg) == 2 {
 		attrs = append(attrs, cheater)
@@ -110,10 +103,11 @@ func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.
 			case "exploiter":
 				attrs = append(attrs, exploiter)
 			default:
-				return fmt.Errorf("unknown tag: %s", msg[i])
+				return "", fmt.Errorf("unknown tag: %s", msg[i])
 			}
 		}
 	}
+
 	player := Player{
 		Attributes: attrs,
 		LastSeen: LastSeen{
@@ -122,37 +116,29 @@ func (a *App) add(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.
 		SteamID: sid,
 	}
 
-	if err := addPlayer(a.ctx, a.db, player); err != nil {
+	if err := addPlayer(ctx, database, player); err != nil {
 		if err.Error() == "UNIQUE constraint failed: player.steamid" {
-			return fmt.Errorf("duplicate steam id: %d", sid.Int64())
+			return "", fmt.Errorf("duplicate steam id: %d", sid.Int64())
 		} else {
 			slog.Error("Failed to add player", slog.String("error", err.Error()))
-			return fmt.Errorf("oops")
+			return "", fmt.Errorf("oops")
 		}
 	}
 
-	a.idsMu.Lock()
-	a.ids[player.SteamID] = player
-	a.idsMu.Unlock()
-
-	sendMsg(s, m, fmt.Sprintf("Added new entry successfully: %d", sid))
-
-	return nil
+	return fmt.Sprintf("Added new entry successfully: %d", sid), nil
 }
 
-func (a *App) check(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID) error {
-	a.idsMu.RLock()
-	_, found := a.ids[sid]
-	a.idsMu.RUnlock()
-	if !found {
-		return fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
+func checkEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (string, error) {
+	player, errPlayer := getPlayer(ctx, database, sid)
+	if errPlayer != nil {
+		return "", fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
 	}
-	sendMsg(s, m, fmt.Sprintf(":skull_crossbones: %d is a confirmed baddie :skull_crossbones: "+
-		"https://steamcommunity.com/profiles/%d", sid.Int64(), sid.Int64()))
-	return nil
+
+	return fmt.Sprintf(":skull_crossbones: %s is a confirmed baddie :skull_crossbones: "+
+		"https://steamcommunity.com/profiles/%d", player.LastSeen.PlayerName, sid.Int64()), nil
 }
 
-func (a *App) steamid(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID) {
+func getSteamid(sid steamid.SteamID) (string, error) {
 	var b strings.Builder
 	b.WriteString("```")
 	b.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
@@ -160,147 +146,174 @@ func (a *App) steamid(s *discordgo.Session, m *discordgo.MessageCreate, sid stea
 	b.WriteString(fmt.Sprintf("Steam3:  %s", sid.Steam3()))
 	b.WriteString("```")
 	b.WriteString(fmt.Sprintf("Profile: <https://steamcommunity.com/profiles/%d>", sid.Int64()))
-	sendMsg(s, m, b.String())
+
+	return b.String(), nil
 }
 
-func (a *App) importJSON(s *discordgo.Session, m *discordgo.MessageCreate) error {
+func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreate) (string, error) {
 	if len(m.Attachments) == 0 {
-		return errors.New("Must attach json file to import")
+		return "", errors.New("Must attach json file to import")
 	}
-	client := http.Client{}
-	c, cancel := context.WithTimeout(a.ctx, time.Second*30)
+	client := &http.Client{}
+	c, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
+
 	added := 0
+	known, errKnown := getPlayers(ctx, database)
+	if errKnown != nil {
+		return "", errors.Join(errKnown, errors.New("failed to load existing entries for comparison"))
+	}
+
 	for _, attach := range m.Attachments {
 		req, err := http.NewRequestWithContext(c, "GET", attach.URL, nil)
 		if err != nil {
-			return errors.Join(err, errors.New("failed to setup http request"))
+			return "", errors.Join(err, errors.New("failed to setup http request"))
 		}
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return errors.Join(err, errors.New("failed to download file"))
+			return "", errors.Join(err, errors.New("failed to download file"))
 		}
 		_ = resp.Body.Close()
 
-		var playerList masterListResp
+		var playerList PlayerListRoot
 		if errDecode := json.NewDecoder(resp.Body).Decode(&playerList); errDecode != nil {
-			return errors.Join(errDecode, errors.New("failed to decode file"))
+			return "", errors.Join(errDecode, errors.New("failed to decode file"))
 		}
 
-		added += a.LoadMasterIDS(playerList.Players)
-	}
+		var toAdd []Player
+		for _, player := range playerList.Players {
+			found := false
+			for _, existing := range known {
+				if player.SteamID.Int64() == existing.SteamID.Int64() {
+					found = true
 
-	sendMsg(s, m, fmt.Sprintf("Loaded %d new players", added))
-
-	return nil
-}
-
-func (a *App) del(s *discordgo.Session, m *discordgo.MessageCreate, sid steamid.SteamID) error {
-	a.idsMu.RLock()
-	_, found := a.ids[sid]
-	a.idsMu.RUnlock()
-
-	if !found {
-		return fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
-	}
-
-	if err := dropPlayer(a.ctx, a.db, sid); err != nil {
-		return fmt.Errorf("error dropping player: %w", err)
-	}
-
-	a.idsMu.Lock()
-	delete(a.ids, sid)
-	a.idsMu.Unlock()
-
-	sendMsg(s, m, fmt.Sprintf("Dropped entry successfully: %d", sid))
-
-	return nil
-}
-
-func (a *App) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-	msg := strings.Split(strings.ToLower(m.Content), " ")
-	minArgs := map[string]int{
-		"!del":     2,
-		"!check":   2,
-		"!add":     2,
-		"!steamid": 2,
-		"!import":  1,
-		"!count":   1,
-	}
-
-	count, found := minArgs[msg[0]]
-	if !found {
-		return
-	}
-
-	if len(msg) < count {
-		sendMsg(s, m, fmt.Sprintf("Command requires at least %d args", count))
-		return
-	}
-
-	allowed, err := memberHasRole(s, m.GuildID, m.Author.ID)
-	if err != nil {
-		slog.Error("Failed to lookup role data")
-		return
-	}
-
-	if !allowed && msg[0] != "!steamid" && msg[0] != "!count" {
-		sendMsg(s, m, "Unauthorized")
-		return
-	}
-
-	c, cancel := context.WithTimeout(a.ctx, time.Second*10)
-	defer cancel()
-
-	var sid steamid.SteamID
-	if len(msg) > 1 {
-		if strings.HasPrefix(msg[1], "http") {
-			msg[1] = fmt.Sprintf("<%s>", msg[1])
-			resolvedSid, errResolve := steamid.Resolve(c, msg[1])
-			if errResolve != nil {
-				sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
-
-				return
+					break
+				}
 			}
-			sid = resolvedSid
-		} else {
-			sid = steamid.New(msg[1])
-			if !sid.Valid() {
-				sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
-
-				return
+			if !found {
+				toAdd = append(toAdd, player)
 			}
 		}
-		if !sid.Valid() {
-			sendMsg(s, m, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
 
+		for _, p := range toAdd {
+			if errAdd := addPlayer(ctx, database, p); errAdd != nil {
+				slog.Error("failed to add new entry", slog.String("error", errAdd.Error()))
+				continue
+			}
+			added += 1
+		}
+
+	}
+
+	return fmt.Sprintf("Loaded %d new players", added), nil
+}
+
+func deleteEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (string, error) {
+	_, errPlayer := getPlayer(ctx, database, sid)
+	if errPlayer != nil {
+		return "", fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
+	}
+
+	if err := dropPlayer(ctx, database, sid); err != nil {
+		return "", fmt.Errorf("error dropping player: %w", err)
+	}
+
+	return fmt.Sprintf("Dropped entry successfully: %d", sid), nil
+}
+
+func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Session, *discordgo.MessageCreate) {
+	return func(session *discordgo.Session, message *discordgo.MessageCreate) {
+		// Ignore all messages created by the bot itself
+		if message.Author.ID == session.State.User.ID {
 			return
 		}
-	}
+		msg := strings.Split(strings.ToLower(message.Content), " ")
+		minArgs := map[string]int{
+			"!del":     2,
+			"!check":   2,
+			"!add":     2,
+			"!steamid": 2,
+			"!import":  1,
+			"!count":   1,
+		}
 
-	var cmdErr error
-	switch msg[0] {
-	case "!del":
-		cmdErr = a.del(s, m, sid)
-	case "!check":
-		cmdErr = a.check(s, m, sid)
-	case "!add":
-		cmdErr = a.add(s, m, sid, msg)
-	case "!steamid":
-		a.steamid(s, m, sid)
-	case "!count":
-		a.count(s, m)
-	case "!import":
-		cmdErr = a.importJSON(s, m)
-	}
+		argCount, found := minArgs[msg[0]]
+		if !found {
+			return
+		}
 
-	if cmdErr != nil {
-		sendMsg(s, m, cmdErr.Error())
+		if len(msg) < argCount {
+			sendMsg(session, message, fmt.Sprintf("Command requires at least %d args", argCount))
+			return
+		}
+
+		allowed, err := memberHasRole(session, message.GuildID, message.Author.ID)
+		if err != nil {
+			slog.Error("Failed to lookup role data")
+			return
+		}
+
+		if !allowed && msg[0] != "!steamid" && msg[0] != "!count" {
+			sendMsg(session, message, "Unauthorized")
+			return
+		}
+
+		c, cancel := context.WithTimeout(ctx, time.Second*10)
+		defer cancel()
+
+		var sid steamid.SteamID
+		if len(msg) > 1 {
+			if strings.HasPrefix(msg[1], "http") {
+				msg[1] = fmt.Sprintf("<%s>", msg[1])
+				resolvedSid, errResolve := steamid.Resolve(c, msg[1])
+				if errResolve != nil {
+					sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+
+					return
+				}
+				sid = resolvedSid
+			} else {
+				sid = steamid.New(msg[1])
+				if !sid.Valid() {
+					sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+
+					return
+				}
+			}
+			if !sid.Valid() {
+				sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+
+				return
+			}
+		}
+
+		var (
+			response string
+			cmdErr   error
+		)
+
+		switch strings.ToLower(msg[0]) {
+		case "!del":
+			response, cmdErr = deleteEntry(ctx, database, sid)
+		case "!check":
+			response, cmdErr = checkEntry(ctx, database, sid)
+		case "!add":
+			response, cmdErr = addEntry(ctx, database, sid, msg)
+		case "!steamid":
+			response, cmdErr = getSteamid(sid)
+		case "!count":
+			response, cmdErr = totalEntries(ctx, database)
+		case "!import":
+			response, cmdErr = importJSON(ctx, database, message)
+		}
+
+		if cmdErr != nil {
+			sendMsg(session, message, cmdErr.Error())
+			return
+		}
+
+		sendMsg(session, message, response)
 	}
 }
 
@@ -318,6 +331,7 @@ func guildCreate(_ *discordgo.Session, event *discordgo.GuildCreate) {
 	for _, channel := range event.Guild.Channels {
 		if channel.ID == event.Guild.ID {
 			slog.Info("Connected to new guild", slog.String("guild", event.Guild.Name))
+
 			return
 		}
 	}

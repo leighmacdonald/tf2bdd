@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"io/ioutil"
+	"github.com/leighmacdonald/steamid/v4/steamid"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,46 +13,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testAuthKey = "123456"
-
 func TestDownloadMasterList(t *testing.T) {
-	_, err := DownloadMasterList()
+	_, err := downloadMasterList()
 	require.NoError(t, err)
 }
 
-func TestHandleAddSteamIDBadAuth(t *testing.T) {
-	// Bad auth
-	reqBadAuth, err := http.NewRequest("POST", "/v1/steamids", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reqBadAuth.Header.Set("Authorization", "asdfasdf")
-	w2 := httptest.NewRecorder()
-	a, err := newTestApp()
-	require.NoError(t, err)
-	NewRouter(a).ServeHTTP(w2, reqBadAuth)
-	require.Equal(t, http.StatusUnauthorized, w2.Code)
-}
-
-func newTestApp() (*App, error) {
-	return NewApp(context.Background(), ":memory:")
+func newTestDB(ctx context.Context) (*sql.DB, error) {
+	return openDB(ctx, ":memory:")
 }
 
 func TestHandleGetSteamIDS(t *testing.T) {
-	req, err := http.NewRequest("GET", "/v1/steamids", nil)
-	if err != nil {
-		t.Fatal(err)
+	ctx := context.Background()
+	req, errReq := http.NewRequest("GET", "/v1/steamids", nil)
+	if errReq != nil {
+		t.Fatal(errReq)
 	}
 	w := httptest.NewRecorder()
-	app, err := newTestApp()
-	require.NoError(t, err)
-	NewRouter(app).ServeHTTP(w, req)
+	database, errApp := newTestDB(ctx)
+	require.NoError(t, errApp)
+
+	localPlayers := []Player{
+		{
+			SteamID:    steamid.New(76561198237337976),
+			Attributes: []Attributes{cheater},
+			LastSeen:   LastSeen{},
+		},
+		{
+			SteamID:    steamid.New(76561198834913692),
+			Attributes: []Attributes{cheater},
+			LastSeen:   LastSeen{},
+		},
+	}
+	for _, p := range localPlayers {
+		require.NoError(t, addPlayer(ctx, database, p))
+	}
+
+	createRouter(database).ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	var players masterListResp
-	b, err := ioutil.ReadAll(w.Body)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(b, &players))
-	require.Equal(t, len(app.ids), len(players.Players))
+
+	var players PlayerListRoot
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&players))
+	require.Equal(t, len(localPlayers), len(players.Players))
 }
 
 func TestMain(m *testing.M) {
