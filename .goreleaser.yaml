@@ -6,6 +6,12 @@ version: 1
 before:
   hooks:
     - go mod tidy
+    -
+gomod:
+  proxy: true
+  env:
+    - GOPROXY=https://proxy.golang.org,direct
+    - GOSUMDB=sum.golang.org
 
 builds:
   - env:
@@ -13,6 +19,10 @@ builds:
     goos:
       - linux
       - windows
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    gcflags:
+      - all=-trimpath={{.Env.GOPATH}}
 
 release:
   github:

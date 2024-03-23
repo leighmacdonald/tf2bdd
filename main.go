@@ -14,6 +14,8 @@ import (
 	"github.com/leighmacdonald/steamid/v4/steamid"
 )
 
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("error returned", slog.String("error", err.Error()))
@@ -24,6 +26,8 @@ func main() {
 }
 
 func run() error {
+	slog.Info("Starting tf2bdd", slog.String("version", version))
+
 	config, errConfig := readConfig()
 	if errConfig != nil {
 		return errConfig
