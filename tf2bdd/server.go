@@ -1,4 +1,4 @@
-package main
+package tf2bdd
 
 import (
 	"database/sql"
@@ -97,14 +97,14 @@ func handleGetSteamIDs(database *sql.DB, config Config) http.HandlerFunc {
 	}
 }
 
-func createRouter(database *sql.DB, config Config) *http.ServeMux {
+func CreateRouter(database *sql.DB, config Config) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/steamids", handleGetSteamIDs(database, config))
 
 	return mux
 }
 
-func createHTTPServer(mux *http.ServeMux, listenAddr string) *http.Server {
+func CreateHTTPServer(mux *http.ServeMux, listenAddr string) *http.Server {
 	return &http.Server{
 		Addr:           listenAddr,
 		Handler:        mux,

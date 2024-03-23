@@ -1,4 +1,4 @@
-package main
+package tf2bdd
 
 import (
 	"errors"
@@ -26,7 +26,7 @@ type Config struct {
 	ExportedAttrs   []string `mapstructure:"exported_attrs"`
 }
 
-func readConfig() (Config, error) {
+func ReadConfig() (Config, error) {
 	if home, errHomeDir := homedir.Dir(); errHomeDir != nil {
 		viper.AddConfigPath(home)
 	}
@@ -69,7 +69,7 @@ func readConfig() (Config, error) {
 	return config, nil
 }
 
-func validateConfig(config Config) error {
+func ValidateConfig(config Config) error {
 	if config.SteamKey == "" || len(config.SteamKey) != 32 {
 		return fmt.Errorf("invalid steam token: %s", config.SteamKey)
 	}

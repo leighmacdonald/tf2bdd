@@ -1,4 +1,4 @@
-package main
+package tf2bdd
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"github.com/leighmacdonald/steamid/v4/steamid"
 )
 
-func discordAddURL(clientID string) string {
+func DiscordAddURL(clientID string) string {
 	return fmt.Sprintf("https://discord.com/oauth2/authorize?client_id=%s&scope=bot&permissions=275146361856", clientID)
 }
 
@@ -26,7 +26,7 @@ func ready(_ *discordgo.Session, _ *discordgo.Ready) {
 	slog.Info("Connected to discord successfully")
 }
 
-func newBot(token string) (*discordgo.Session, error) {
+func NewBot(token string) (*discordgo.Session, error) {
 	dg, errDiscord := discordgo.New("Bot " + token)
 	if errDiscord != nil {
 		return nil, errors.Join(errDiscord, errors.New("failed to create bot instance: %s"))
@@ -35,7 +35,7 @@ func newBot(token string) (*discordgo.Session, error) {
 	return dg, nil
 }
 
-func startBot(ctx context.Context, session *discordgo.Session, database *sql.DB, config Config) error {
+func StartBot(ctx context.Context, session *discordgo.Session, database *sql.DB, config Config) error {
 	session.AddHandler(ready)
 	session.AddHandler(messageCreate(ctx, database, config))
 	session.AddHandler(guildCreate)

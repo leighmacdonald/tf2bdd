@@ -1,4 +1,4 @@
-package main
+package tf2bdd
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 )
 
 func newTestDB(ctx context.Context) (*sql.DB, error) {
-	db, errDB := openDB(":memory:")
+	db, errDB := OpenDB(":memory:")
 	if errDB != nil {
 		return nil, errDB
 	}

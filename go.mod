@@ -1,4 +1,4 @@
-module tf2bdd
+module github.com/leighmacdonald/tf2bdd
 
 go 1.22
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/leighmacdonald/tf2bdd/tf2bdd"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,12 +29,12 @@ func main() {
 func run() error {
 	slog.Info("Starting tf2bdd", slog.String("version", version))
 
-	config, errConfig := readConfig()
+	config, errConfig := tf2bdd.ReadConfig()
 	if errConfig != nil {
 		return errConfig
 	}
 
-	if errValidate := validateConfig(config); errValidate != nil {
+	if errValidate := tf2bdd.ValidateConfig(config); errValidate != nil {
 		return fmt.Errorf("config file validation error: %w", errValidate)
 	}
 
@@ -41,7 +42,7 @@ func run() error {
 		return errSetKey
 	}
 
-	database, errDatabase := openDB(config.DatabasePath)
+	database, errDatabase := tf2bdd.OpenDB(config.DatabasePath)
 	if errDatabase != nil {
 		return errDatabase
 	}
@@ -49,19 +50,19 @@ func run() error {
 	appCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if errSetupDB := setupDB(appCtx, database); errSetupDB != nil {
+	if errSetupDB := tf2bdd.SetupDB(appCtx, database); errSetupDB != nil {
 		return errSetupDB
 	}
 
 	listenAddr := fmt.Sprintf("%s:%d", config.ListenHost, config.ListenPort)
-	httpServer := createHTTPServer(createRouter(database, config), listenAddr)
+	httpServer := tf2bdd.CreateHTTPServer(tf2bdd.CreateRouter(database, config), listenAddr)
 
-	discordBot, errBot := newBot(config.DiscordBotToken)
+	discordBot, errBot := tf2bdd.NewBot(config.DiscordBotToken)
 	if errBot != nil {
 		return errBot
 	}
 
-	slog.Info("Add bot", slog.String("link", discordAddURL(config.DiscordClientID)))
+	slog.Info("Add bot", slog.String("link", tf2bdd.DiscordAddURL(config.DiscordClientID)))
 	slog.Info("Make sure you enable \"Message Content Intent\" on your discord config under the Bot settings via discord website")
 	slog.Info("Listening on", slog.String("addr", fmt.Sprintf("http://%s", listenAddr)))
 
@@ -71,7 +72,7 @@ func run() error {
 		}
 	}()
 
-	if errBotStart := startBot(appCtx, discordBot, database, config); errBotStart != nil {
+	if errBotStart := tf2bdd.StartBot(appCtx, discordBot, database, config); errBotStart != nil {
 		slog.Error("discord bot error", slog.String("error", errBotStart.Error()))
 	}
 

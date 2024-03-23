@@ -20,6 +20,10 @@ builds:
       - -s -w -X main.version={{.Version}}
     gcflags:
       - all=-trimpath={{.Env.GOPATH}}
+    main:
+      ./cmd/tf2bdd
+    id: tf2bdd
+    mod_timestamp: {{.CommitTimestamp}}
 
 release:
   github:

@@ -1,4 +1,4 @@
-package main
+package tf2bdd
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
-func openDB(dbPath string) (*sql.DB, error) {
+func OpenDB(dbPath string) (*sql.DB, error) {
 	database, errOpen := sql.Open("sqlite3", dbPath)
 	if errOpen != nil {
 		return nil, errors.Join(errOpen, errors.New("could not open database"))
@@ -22,7 +22,7 @@ func openDB(dbPath string) (*sql.DB, error) {
 	return database, nil
 }
 
-func setupDB(ctx context.Context, database *sql.DB) error {
+func SetupDB(ctx context.Context, database *sql.DB) error {
 	const query = `
 		CREATE TABLE IF NOT EXISTS player (
 		    steamid BIGINT PRIMARY KEY,
