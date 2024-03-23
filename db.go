@@ -54,6 +54,7 @@ func setupDB(ctx context.Context, database *sql.DB) error {
 
 func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (Player, error) {
 	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player WHERE steamid = ?`
+
 	var (
 		player    Player
 		sid       int64
@@ -62,6 +63,7 @@ func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (
 		lastName  string
 		createdOn int64
 	)
+
 	if errScan := database.
 		QueryRowContext(ctx, query, steamID.Int64()).
 		Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
@@ -81,6 +83,7 @@ func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (
 
 func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player`
+
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, errors.Join(err, errors.New("failed to load player"))
@@ -103,9 +106,11 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 			lastName  string
 			createdOn int64
 		)
+
 		if errScan := rows.Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
 			return nil, errors.Join(errScan, errors.New("error scanning player row"))
 		}
+
 		player.CreatedOn = time.Unix(createdOn, 0)
 		player.SteamID = steamid.New(sid)
 		player.Attributes = strings.Split(strings.ToLower(attrs), ",")
@@ -126,6 +131,7 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 
 func getCount(ctx context.Context, db *sql.DB) (int, error) {
 	var total int
+
 	if err := db.QueryRowContext(ctx, "select count(*) from player").Scan(&total); err != nil {
 		return -1, err
 	}
@@ -153,6 +159,7 @@ func addPlayer(ctx context.Context, db *sql.DB, player Player, author int64) err
 
 func dropPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) error {
 	const query = `DELETE FROM player WHERE steamid = ?`
+
 	if _, err := db.ExecContext(ctx, query, steamID.Int64()); err != nil {
 		return errors.Join(err, errors.New("failed to drop user"))
 	}

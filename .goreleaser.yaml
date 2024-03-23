@@ -31,6 +31,10 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE.md
+      - README.md
+      - tf2bdd_example.yml
     # use zip for windows archives
     format_overrides:
       - goos: windows
