@@ -21,8 +21,8 @@ builds:
       - windows
     ldflags:
       - -s -w -X main.version={{.Version}}
-    gcflags:
-      - all=-trimpath={{.Env.GOPATH}}
+    flags:
+      - -trimpath
     main:
       ./cmd/tf2bdd
     id: tf2bdd
