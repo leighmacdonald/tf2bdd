@@ -19,7 +19,7 @@ func newTestDB(ctx context.Context) (*sql.DB, error) {
 		return nil, errDB
 	}
 
-	return db, setupDB(ctx, db)
+	return db, SetupDB(ctx, db)
 }
 
 func TestHandleGetSteamIDS(t *testing.T) {
@@ -65,7 +65,7 @@ func TestHandleGetSteamIDS(t *testing.T) {
 		require.NoError(t, addPlayer(ctx, database, p, 0))
 	}
 
-	createRouter(database, testConfig).ServeHTTP(recorder, req)
+	CreateRouter(database, testConfig).ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var players PlayerListRoot

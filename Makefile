@@ -13,7 +13,7 @@ run:
 	@go run $(GO_FLAGS) -race main.go
 
 test:
-	@go test $(GO_FLAGS) -race -cover . ./...
+	@go test $(GO_FLAGS) -race -cover .\tf2bdd\
 
 clean:
 	@go clean $(GO_FLAGS) -i
