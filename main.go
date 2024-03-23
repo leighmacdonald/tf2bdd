@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
-	"github.com/pkg/errors"
 )
 
 func main() {
@@ -25,33 +24,20 @@ func main() {
 }
 
 func run() error {
-	steamKey := os.Getenv("STEAM_TOKEN")
-	if steamKey == "" || len(steamKey) != 32 {
-		return fmt.Errorf("invalid steam token: %s", steamKey)
+	config, errConfig := readConfig()
+	if errConfig != nil {
+		return errConfig
 	}
 
-	if errSetKey := steamid.SetKey(steamKey); errSetKey != nil {
+	if errValidate := validateConfig(config); errValidate != nil {
+		return fmt.Errorf("config file validation error: %w", errValidate)
+	}
+
+	if errSetKey := steamid.SetKey(config.SteamKey); errSetKey != nil {
 		return errSetKey
 	}
 
-	token := os.Getenv("BOT_TOKEN")
-	if token == "" {
-		return fmt.Errorf("invalid bot token: %s", token)
-	}
-
-	roles := strings.Split(os.Getenv("BOT_ROLES"), ",")
-	if len(roles) == 0 {
-		return errors.New("No discord roles defined, please set ROLES")
-	}
-
-	clientID = os.Getenv("BOT_CLIENTID")
-	if clientID == "" {
-		return errors.New("BOT_CLIENTID must be set to your discord bot client id")
-	}
-
-	allowedRoles = roles
-
-	database, errDatabase := openDB("./db.sqlite")
+	database, errDatabase := openDB(config.DatabasePath)
 	if errDatabase != nil {
 		return errDatabase
 	}
@@ -63,14 +49,17 @@ func run() error {
 		return errSetupDB
 	}
 
-	httpServer := createHTTPServer(createRouter(database))
+	listenAddr := fmt.Sprintf("%s:%d", config.ListenHost, config.ListenPort)
+	httpServer := createHTTPServer(createRouter(database, config), listenAddr)
 
-	discordBot, errBot := NewBot(token)
+	discordBot, errBot := newBot(config.DiscordBotToken)
 	if errBot != nil {
 		return errBot
 	}
 
-	slog.Info("Add bot link", slog.String("link", discordAddURL()))
+	slog.Info("Add bot", slog.String("link", discordAddURL(config.DiscordClientID)))
+	slog.Info("Make sure you enable \"Message Content Intent\" on your discord config under the Bot settings via discord website")
+	slog.Info("Listening on", slog.String("addr", fmt.Sprintf("http://%s", listenAddr)))
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -78,7 +67,7 @@ func run() error {
 		}
 	}()
 
-	if errBotStart := startBot(appCtx, discordBot, database); errBotStart != nil {
+	if errBotStart := startBot(appCtx, discordBot, database, config); errBotStart != nil {
 		slog.Error("discord bot error", slog.String("error", errBotStart.Error()))
 	}
 

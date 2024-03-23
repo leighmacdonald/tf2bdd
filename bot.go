@@ -17,16 +17,11 @@ import (
 )
 
 const (
-	perms  = 125952
+	perms  = 275146361856
 	addFmt = "https://discord.com/oauth2/authorize?client_id=%s&scope=bot&permissions=%d"
 )
 
-var (
-	allowedRoles []string
-	clientID     string
-)
-
-func discordAddURL() string {
+func discordAddURL(clientID string) string {
 	return fmt.Sprintf(addFmt, clientID, perms)
 }
 
@@ -35,7 +30,7 @@ func ready(_ *discordgo.Session, _ *discordgo.Ready) {
 	slog.Info("Connected to discord successfully")
 }
 
-func NewBot(token string) (*discordgo.Session, error) {
+func newBot(token string) (*discordgo.Session, error) {
 	dg, errDiscord := discordgo.New("Bot " + token)
 	if errDiscord != nil {
 		return nil, errors.Join(errDiscord, errors.New("failed to create bot instance: %s"))
@@ -44,19 +39,19 @@ func NewBot(token string) (*discordgo.Session, error) {
 	return dg, nil
 }
 
-func startBot(ctx context.Context, dg *discordgo.Session, database *sql.DB) error {
-	dg.AddHandler(ready)
-	dg.AddHandler(messageCreate(ctx, database))
-	dg.AddHandler(guildCreate)
+func startBot(ctx context.Context, session *discordgo.Session, database *sql.DB, config Config) error {
+	session.AddHandler(ready)
+	session.AddHandler(messageCreate(ctx, database, config))
+	session.AddHandler(guildCreate)
 
-	if errOpenDiscord := dg.Open(); errOpenDiscord != nil {
+	if errOpenDiscord := session.Open(); errOpenDiscord != nil {
 		return errors.Join(errOpenDiscord, errors.New("could not connect to discord"))
 	}
 
 	return nil
 }
 
-func memberHasRole(session *discordgo.Session, guildID string, userID string) (bool, error) {
+func memberHasRole(session *discordgo.Session, guildID string, userID string, allowedRoles []string) (bool, error) {
 	member, errMember := session.State.Member(guildID, userID)
 	if errMember != nil {
 		if member, errMember = session.GuildMember(guildID, userID); errMember != nil {
@@ -248,7 +243,7 @@ func deleteEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (st
 	return fmt.Sprintf("Dropped entry successfully: %s", sid.String()), nil
 }
 
-func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Session, *discordgo.MessageCreate) {
+func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*discordgo.Session, *discordgo.MessageCreate) {
 	return func(session *discordgo.Session, message *discordgo.MessageCreate) {
 		// Ignore all messages created by the bot itself
 		if message.Author.ID == session.State.User.ID {
@@ -275,9 +270,10 @@ func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Sessio
 			return
 		}
 
-		allowed, err := memberHasRole(session, message.GuildID, message.Author.ID)
+		allowed, err := memberHasRole(session, message.GuildID, message.Author.ID, config.DiscordRoles)
 		if err != nil {
-			slog.Error("Failed to lookup role data")
+			slog.Error("Failed to lookup role data", slog.String("error", err.Error()))
+			sendMsg(session, message, "Failed to lookup role data")
 
 			return
 		}

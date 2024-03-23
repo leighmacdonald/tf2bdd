@@ -33,15 +33,18 @@ demand, or somebody creates a PR for it, I will add them.
     $ cd tf2bdd
     $ go build
 
+## Configuration
+
+There is an example config located inside the releases `tf2bdd_example.yml`. Rename it to `tf2bdd.yml` and edit the 
+values as documented inside of it.
+
 ## Running Binary
 
 You can either use the binary you build from source, or download the latest release from the [releases](https://github.com/leighmacdonald/tf2bdd/releases)
 page.
 
-    $ export STEAM_TOKEN=steam_web_api_token  # Your steam api key, for resolving vanity names
-    $ export BOT_TOKEN=discord_bot_token      # Your discord bot token
-    $ export BOT_CLIENTID=12345               # Discord client id
-    $ export BOT_ROLES=11111111111,222222222  # Roles allowed to use non-readonly commands
+    $ cp tf2bdd_example.yml tf2bdd.yml     # Copy example config
+    $ vim tf2bdd.yml                       # Edit/Add your config options
     $ ./tf2bdd
 
 You will probably want to create something like a systemd service to automate this.
@@ -50,9 +53,6 @@ You will probably want to create something like a systemd service to automate th
 
     docker run --rm --name tf2bdd -it \
         -p 127.0.0.1:8899:8899 \
-        --env BOT_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-        --env STEAM_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-        --env BOT_CLIENTID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-        --env BOT_ROLES=111111111111,22222222222 \
         --mount type=bind,source="$(pwd)"/db.sqlite,target=/app/db.sqlite \
+        --mount type=bind,source="$(pwd)"/tf2bdd.yml,target=/app/tf2bdd.yml \
         ghcr.io/leighmacdonald/tf2bdd:latest

@@ -23,11 +23,27 @@ func newTestDB(ctx context.Context) (*sql.DB, error) {
 }
 
 func TestHandleGetSteamIDS(t *testing.T) {
+	testConfig := Config{
+		SteamKey:        "",
+		DiscordClientID: "",
+		DiscordBotToken: "",
+		DiscordRoles:    nil,
+		ExternalURL:     "https://example.com/",
+		DatabasePath:    "",
+		ListenHost:      "",
+		ListenPort:      0,
+		ListTitle:       "test title",
+		ListDescription: "test description",
+		ListAuthors:     []string{"test author"},
+		ExportedAttrs:   nil,
+	}
 	ctx := context.Background()
+
 	req, errReq := http.NewRequestWithContext(ctx, http.MethodGet, "/v1/steamids", nil)
 	if errReq != nil {
 		t.Fatal(errReq)
 	}
+
 	recorder := httptest.NewRecorder()
 	database, errApp := newTestDB(ctx)
 	require.NoError(t, errApp)
@@ -44,11 +60,12 @@ func TestHandleGetSteamIDS(t *testing.T) {
 			LastSeen:   LastSeen{},
 		},
 	}
+
 	for _, p := range localPlayers {
 		require.NoError(t, addPlayer(ctx, database, p, 0))
 	}
 
-	createRouter(database).ServeHTTP(recorder, req)
+	createRouter(database, testConfig).ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var players PlayerListRoot
