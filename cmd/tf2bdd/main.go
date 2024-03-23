@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/leighmacdonald/tf2bdd/tf2bdd"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +12,9 @@ import (
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
+	"github.com/leighmacdonald/tf2bdd/tf2bdd"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 var version = "dev"

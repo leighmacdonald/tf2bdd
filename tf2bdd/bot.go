@@ -136,7 +136,7 @@ func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []
 		SteamID: sid,
 	}
 
-	if err := addPlayer(ctx, database, player, author); err != nil {
+	if err := AddPlayer(ctx, database, player, author); err != nil {
 		if err.Error() == "UNIQUE constraint failed: player.steamid" {
 			return "", fmt.Errorf("duplicate steam id: %s", sid.String())
 		}
@@ -247,7 +247,7 @@ func loadAttachment(ctx context.Context, client *http.Client, database *sql.DB, 
 
 	added := 0
 	for _, p := range toAdd {
-		if errAdd := addPlayer(ctx, database, p, author); errAdd != nil {
+		if errAdd := AddPlayer(ctx, database, p, author); errAdd != nil {
 			slog.Error("failed to add new entry", slog.String("error", errAdd.Error()))
 
 			continue

@@ -1,4 +1,4 @@
-package tf2bdd
+package tf2bdd_test
 
 import (
 	"context"
@@ -10,20 +10,23 @@ import (
 	"testing"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
+	"github.com/leighmacdonald/tf2bdd/tf2bdd"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/stretchr/testify/require"
 )
 
 func newTestDB(ctx context.Context) (*sql.DB, error) {
-	db, errDB := OpenDB(":memory:")
+	db, errDB := tf2bdd.OpenDB(":memory:")
 	if errDB != nil {
 		return nil, errDB
 	}
 
-	return db, SetupDB(ctx, db)
+	return db, tf2bdd.SetupDB(ctx, db)
 }
 
 func TestHandleGetSteamIDS(t *testing.T) {
-	testConfig := Config{
+	testConfig := tf2bdd.Config{
 		SteamKey:        "",
 		DiscordClientID: "",
 		DiscordBotToken: "",
@@ -48,27 +51,27 @@ func TestHandleGetSteamIDS(t *testing.T) {
 	database, errApp := newTestDB(ctx)
 	require.NoError(t, errApp)
 
-	localPlayers := []Player{
+	localPlayers := []tf2bdd.Player{
 		{
 			SteamID:    steamid.New(76561198237337976),
 			Attributes: []string{"cheater"},
-			LastSeen:   LastSeen{},
+			LastSeen:   tf2bdd.LastSeen{},
 		},
 		{
 			SteamID:    steamid.New(76561198834913692),
 			Attributes: []string{"cheater"},
-			LastSeen:   LastSeen{},
+			LastSeen:   tf2bdd.LastSeen{},
 		},
 	}
 
 	for _, p := range localPlayers {
-		require.NoError(t, addPlayer(ctx, database, p, 0))
+		require.NoError(t, tf2bdd.AddPlayer(ctx, database, p, 0))
 	}
 
-	CreateRouter(database, testConfig).ServeHTTP(recorder, req)
+	tf2bdd.CreateRouter(database, testConfig).ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
-	var players PlayerListRoot
+	var players tf2bdd.PlayerListRoot
 	require.NoError(t, json.NewDecoder(recorder.Body).Decode(&players))
 	require.Equal(t, len(localPlayers), len(players.Players))
 }

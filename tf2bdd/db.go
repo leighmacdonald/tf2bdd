@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 func OpenDB(dbPath string) (*sql.DB, error) {
@@ -129,7 +127,7 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 	return players, nil
 }
 
-func addPlayer(ctx context.Context, db *sql.DB, player Player, author int64) error {
+func AddPlayer(ctx context.Context, db *sql.DB, player Player, author int64) error {
 	const query = `
 		INSERT INTO player (steamid, attributes, last_seen, last_name, author, created_on)
 		VALUES(?, ?, ?, ?, ?, ?)`
