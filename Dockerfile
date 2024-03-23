@@ -4,7 +4,7 @@ RUN apk add build-base
 COPY go.sum go.mod ./
 RUN go mod download
 COPY . .
-RUN go build -o tf2bdd
+RUN go build ./cmd/tf2bdd/main.go
 
 FROM alpine:latest
 RUN apk add dumb-init
