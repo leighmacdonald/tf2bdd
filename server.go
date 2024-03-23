@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
@@ -65,7 +66,15 @@ func handleGetSteamIDs(database *sql.DB) http.HandlerFunc {
 
 			return
 		}
-		results.Players = players
+
+		var filtered []Player
+		for _, player := range players {
+			if slices.Contains(player.Attributes, "cheater") || slices.Contains(player.Attributes, "bot") {
+				filtered = append(filtered, player)
+			}
+		}
+
+		results.Players = filtered
 		writer.WriteHeader(http.StatusOK)
 		if errEncode := json.NewEncoder(writer).Encode(results); errEncode != nil {
 			slog.Error("failed to encode response", slog.String("error", errEncode.Error()))
