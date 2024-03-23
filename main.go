@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"errors"
 	"github.com/leighmacdonald/steamid/v4/steamid"
 )
 
@@ -24,7 +25,6 @@ func main() {
 }
 
 func run() error {
-	ctx := context.Background()
 	steamKey := os.Getenv("STEAM_TOKEN")
 	if steamKey == "" || len(steamKey) != 32 {
 		return fmt.Errorf("invalid steam token: %s", steamKey)
@@ -39,37 +39,33 @@ func run() error {
 		return fmt.Errorf("invalid bot token: %s", token)
 	}
 
-	database, errDatabase := openDB(ctx, "./db.sqlite")
+	roles := strings.Split(os.Getenv("ROLES"), ",")
+	if len(roles) == 0 {
+		return errors.New("No discord roles defined, please set ROLES")
+	}
+
+	allowedRoles = roles
+
+	database, errDatabase := openDB("./db.sqlite")
 	if errDatabase != nil {
 		return errDatabase
 	}
 
-	ml, errApp := downloadMasterList()
-	if errApp != nil {
-		slog.Warn("Failed to download master list from GH", slog.String("error", errApp.Error()))
+	appCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	if errSetupDB := setupDB(appCtx, database); errSetupDB != nil {
+		return errSetupDB
 	}
-
-	// TODO remove master entries
-
-	own, errOwn := getPlayers(ctx, database)
-	if errOwn != nil {
-		return errOwn
-	}
-
-	var toDelete []int64
-
-	for _, o := range own {
-		for _, p := range ml {
-			if p.SteamID.Int64() == o.SteamID.Int64() {
-				toDelete = append(toDelete, p.SteamID.Int64())
-				break
-			}
-		}
-	}
-
-	slog.Info("To delete", slog.Int("count", len(toDelete)))
 
 	httpServer := createHTTPServer(createRouter(database))
+
+	discordBot, errBot := NewBot(token)
+	if errBot != nil {
+		return errBot
+	}
+
+	slog.Info("Add bot link", slog.String("link", AddUrl()))
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -77,21 +73,19 @@ func run() error {
 		}
 	}()
 
-	dg, errBot := NewBot(ctx, database, token)
-	if errBot != nil {
-		return errBot
+	if errBotStart := startBot(appCtx, discordBot, database); errBotStart != nil {
+		slog.Error("discord bot error", slog.String("error", errBotStart.Error()))
 	}
 
-	slog.Debug("Add bot link", slog.String("link", AddUrl()))
+	<-appCtx.Done()
 
-	signal.NotifyContext(ctx, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-ctx.Done()
+	slog.Info("Shutting down")
 
-	if err := dg.Close(); err != nil {
+	if err := discordBot.Close(); err != nil {
 		slog.Error("Failed to properly shutdown discord client", slog.String("error", err.Error()))
 	}
 
-	cancelCtx, cancelHTTP := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
+	cancelCtx, cancelHTTP := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
 	defer cancelHTTP()
 
 	if err := httpServer.Shutdown(cancelCtx); err != nil {
