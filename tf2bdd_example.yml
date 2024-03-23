@@ -38,6 +38,6 @@ list_description: ""
 
 # Used to filter out matches that dont have at least one of the listed attributes
 # If empty, all known results are returned.
-# For example, If you only wanted to export players with the "cheaters" tag and not people
-# that are marked "suspicious", you would use ["cheaters"]
+# For example, If you only wanted to export players with the "cheaters" or "bot" tag and not people
+# that are marked "suspicious", you would use ["cheaters", "bot"]
 # exported_attrs: []
