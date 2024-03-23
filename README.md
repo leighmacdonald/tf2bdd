@@ -54,8 +54,23 @@ You will probably want to create something like a systemd service to automate th
 
 ## Running Docker
 
-    docker run --rm --name tf2bdd -it \
-        -p 8899:8899 \
+Running over docker is generally the recommended approach, along with a reverse proxy such 
+as [caddy](https://caddyserver.com/) that can provide automatic TLS certs for HTTPS support. 
+If you are using an internal docker network (recommended), ensure you also add the `--network your_network` flag
+to the run command. Take note that the container binds only to localhost in the example command shown `-p 127.0.0.1:8899:8899`, so you
+will not be able to access it remotely unless you remove the `127.0.0.1` or add a reverse proxy in front of it. When
+using a reverse proxy, ensure that you set the `external_url` config option to the url that people can read your server
+at.
+
+You can also use the `latest` image tag if you do not care about pinning to a specific version: `ghcr.io/leighmacdonald/tf2bdd:latest`.
+It will always be using the latest release tag.
+
+    docker run --name tf2bdd -d -it --restart unless-stopped \
+        --pull always \
+        -p 127.0.0.1:8899:8899 \
         --mount type=bind,source="$(pwd)"/db.sqlite,target=/app/db.sqlite \
         --mount type=bind,source="$(pwd)"/tf2bdd.yml,target=/app/tf2bdd.yml \
-        ghcr.io/leighmacdonald/tf2bdd:latest
+        ghcr.io/leighmacdonald/tf2bdd:v1.0.2
+
+Make sure that when running under docker, you do set `listen_host: ""` in your config file so that its actually
+exposed over the docker ip.
