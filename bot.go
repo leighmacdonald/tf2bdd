@@ -140,9 +140,10 @@ func checkEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (str
 func getSteamid(sid steamid.SteamID) string {
 	var builder strings.Builder
 	builder.WriteString("```")
-	builder.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
 	builder.WriteString(fmt.Sprintf("Steam32: %d\n", sid.AccountID))
-	builder.WriteString(fmt.Sprintf("Steam3:  %s", sid.Steam3()))
+	builder.WriteString(fmt.Sprintf("Steam:   %s\n", sid.Steam(false)))
+	builder.WriteString(fmt.Sprintf("Steam3:  %s\n", sid.Steam3()))
+	builder.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
 	builder.WriteString("```")
 	builder.WriteString(fmt.Sprintf("Profile: <https://steamcommunity.com/profiles/%d>", sid.Int64()))
 
