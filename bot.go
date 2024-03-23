@@ -16,13 +16,8 @@ import (
 	"github.com/leighmacdonald/steamid/v4/steamid"
 )
 
-const (
-	perms  = 275146361856
-	addFmt = "https://discord.com/oauth2/authorize?client_id=%s&scope=bot&permissions=%d"
-)
-
 func discordAddURL(clientID string) string {
-	return fmt.Sprintf(addFmt, clientID, perms)
+	return fmt.Sprintf("https://discord.com/oauth2/authorize?client_id=%s&scope=bot&permissions=275146361856", clientID)
 }
 
 // the "ready" event from Discord.
