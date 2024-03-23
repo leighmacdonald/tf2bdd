@@ -129,16 +129,6 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 	return players, nil
 }
 
-func getCount(ctx context.Context, db *sql.DB) (int, error) {
-	var total int
-
-	if err := db.QueryRowContext(ctx, "select count(*) from player").Scan(&total); err != nil {
-		return -1, err
-	}
-
-	return total, nil
-}
-
 func addPlayer(ctx context.Context, db *sql.DB, player Player, author int64) error {
 	const query = `
 		INSERT INTO player (steamid, attributes, last_seen, last_name, author, created_on)
