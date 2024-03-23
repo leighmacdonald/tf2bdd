@@ -72,15 +72,23 @@ func handleGetSteamIDs(database *sql.DB, config Config) http.HandlerFunc {
 			return
 		}
 
-		var filtered []Player
+		if len(config.ExportedAttrs) > 0 {
+			var filtered []Player
 
-		for _, player := range players {
-			if slices.Contains(player.Attributes, "cheater") || slices.Contains(player.Attributes, "bot") {
-				filtered = append(filtered, player)
+			for _, player := range players {
+				for _, attr := range config.ExportedAttrs {
+					if slices.Contains(player.Attributes, attr) {
+						filtered = append(filtered, player)
+
+						break
+					}
+				}
 			}
+			results.Players = filtered
+		} else {
+			results.Players = players
 		}
 
-		results.Players = filtered
 		writer.WriteHeader(http.StatusOK)
 
 		if errEncode := json.NewEncoder(writer).Encode(results); errEncode != nil {
