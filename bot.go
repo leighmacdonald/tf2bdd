@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ const (
 	addFmt   = "https://discord.com/oauth2/authorize?client_id=%d&scope=bot&permissions=%d"
 )
 
-var allowedRoles = []string{"717861254403981334", "493071295777341450"}
+var allowedRoles []string
 
 func AddUrl() string {
 	return fmt.Sprintf(addFmt, clientID, perms)
@@ -32,21 +33,25 @@ func ready(_ *discordgo.Session, _ *discordgo.Ready) {
 	slog.Info("Connected to discord successfully")
 }
 
-func NewBot(ctx context.Context, database *sql.DB, token string) (*discordgo.Session, error) {
+func NewBot(token string) (*discordgo.Session, error) {
 	dg, errDiscord := discordgo.New("Bot " + token)
 	if errDiscord != nil {
-		return nil, errors.Join(errDiscord, errors.New("dailed to create bot instance: %s"))
+		return nil, errors.Join(errDiscord, errors.New("failed to create bot instance: %s"))
 	}
 
+	return dg, nil
+}
+
+func startBot(ctx context.Context, dg *discordgo.Session, database *sql.DB) error {
 	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate(ctx, database))
 	dg.AddHandler(guildCreate)
 
 	if errOpenDiscord := dg.Open(); errOpenDiscord != nil {
-		return nil, errors.Join(errOpenDiscord, errors.New("could not connect to discord"))
+		return errors.Join(errOpenDiscord, errors.New("could not connect to discord"))
 	}
 
-	return dg, nil
+	return nil
 }
 
 func memberHasRole(s *discordgo.Session, guildID string, userID string) (bool, error) {
@@ -87,24 +92,13 @@ func totalEntries(ctx context.Context, database *sql.DB) (string, error) {
 	return fmt.Sprintf("Total steamids tracked: %d", total), nil
 }
 
-func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []string) (string, error) {
-	var attrs []Attributes
+func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []string, author int64) (string, error) {
+	var attrs []string
 	if len(msg) == 2 {
-		attrs = append(attrs, cheater)
+		attrs = append(attrs, "cheater")
 	} else {
 		for i := 2; i < len(msg); i++ {
-			switch msg[i] {
-			case "cheater":
-				attrs = append(attrs, cheater)
-			case "suspicious", "sus":
-				attrs = append(attrs, sus)
-			case "racist":
-				attrs = append(attrs, racist)
-			case "exploiter":
-				attrs = append(attrs, exploiter)
-			default:
-				return "", fmt.Errorf("unknown tag: %s", msg[i])
-			}
+			attrs = append(attrs, msg[i])
 		}
 	}
 
@@ -116,16 +110,16 @@ func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []
 		SteamID: sid,
 	}
 
-	if err := addPlayer(ctx, database, player); err != nil {
+	if err := addPlayer(ctx, database, player, author); err != nil {
 		if err.Error() == "UNIQUE constraint failed: player.steamid" {
-			return "", fmt.Errorf("duplicate steam id: %d", sid.Int64())
+			return "", fmt.Errorf("duplicate steam id: %s", sid.String())
 		} else {
 			slog.Error("Failed to add player", slog.String("error", err.Error()))
 			return "", fmt.Errorf("oops")
 		}
 	}
 
-	return fmt.Sprintf("Added new entry successfully: %d", sid), nil
+	return fmt.Sprintf("Added new entry successfully: %s", sid.String()), nil
 }
 
 func checkEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (string, error) {
@@ -135,7 +129,8 @@ func checkEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (str
 	}
 
 	return fmt.Sprintf(":skull_crossbones: %s is a confirmed baddie :skull_crossbones: "+
-		"https://steamcommunity.com/profiles/%d", player.LastSeen.PlayerName, sid.Int64()), nil
+		"https://steamcommunity.com/profiles/%d \nAuthor: <@%d>\nCreated: %s",
+		player.LastSeen.PlayerName, sid.Int64(), player.Author, player.CreatedOn.String()), nil
 }
 
 func getSteamid(sid steamid.SteamID) (string, error) {
@@ -152,7 +147,7 @@ func getSteamid(sid steamid.SteamID) (string, error) {
 
 func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreate) (string, error) {
 	if len(m.Attachments) == 0 {
-		return "", errors.New("Must attach json file to import")
+		return "", errors.New("must attach json file to import")
 	}
 	client := &http.Client{}
 	c, cancel := context.WithTimeout(ctx, time.Second*30)
@@ -162,6 +157,11 @@ func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreat
 	known, errKnown := getPlayers(ctx, database)
 	if errKnown != nil {
 		return "", errors.Join(errKnown, errors.New("failed to load existing entries for comparison"))
+	}
+
+	author, errAuthor := strconv.ParseInt(m.Author.ID, 10, 64)
+	if errAuthor != nil {
+		return "", errors.New("failed to get discord author id")
 	}
 
 	for _, attach := range m.Attachments {
@@ -174,10 +174,10 @@ func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreat
 		if err != nil {
 			return "", errors.Join(err, errors.New("failed to download file"))
 		}
-		_ = resp.Body.Close()
 
 		var playerList PlayerListRoot
 		if errDecode := json.NewDecoder(resp.Body).Decode(&playerList); errDecode != nil {
+			slog.Error("error decoding", slog.String("error", errDecode.Error()))
 			return "", errors.Join(errDecode, errors.New("failed to decode file"))
 		}
 
@@ -197,7 +197,7 @@ func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreat
 		}
 
 		for _, p := range toAdd {
-			if errAdd := addPlayer(ctx, database, p); errAdd != nil {
+			if errAdd := addPlayer(ctx, database, p, author); errAdd != nil {
 				slog.Error("failed to add new entry", slog.String("error", errAdd.Error()))
 				continue
 			}
@@ -212,14 +212,14 @@ func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreat
 func deleteEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (string, error) {
 	_, errPlayer := getPlayer(ctx, database, sid)
 	if errPlayer != nil {
-		return "", fmt.Errorf("steam id does not exist in database: %d", sid.Int64())
+		return "", fmt.Errorf("steam id does not exist in database: %s", sid.String())
 	}
 
 	if err := dropPlayer(ctx, database, sid); err != nil {
 		return "", fmt.Errorf("error dropping player: %w", err)
 	}
 
-	return fmt.Sprintf("Dropped entry successfully: %d", sid), nil
+	return fmt.Sprintf("Dropped entry successfully: %s", sid.String()), nil
 }
 
 func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Session, *discordgo.MessageCreate) {
@@ -259,33 +259,23 @@ func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Sessio
 			return
 		}
 
-		c, cancel := context.WithTimeout(ctx, time.Second*10)
-		defer cancel()
-
 		var sid steamid.SteamID
 		if len(msg) > 1 {
-			if strings.HasPrefix(msg[1], "http") {
-				msg[1] = fmt.Sprintf("<%s>", msg[1])
-				resolvedSid, errResolve := steamid.Resolve(c, msg[1])
-				if errResolve != nil {
-					sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+			resolveCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+			defer cancel()
 
-					return
-				}
-				sid = resolvedSid
-			} else {
-				sid = steamid.New(msg[1])
-				if !sid.Valid() {
-					sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
-
-					return
-				}
-			}
-			if !sid.Valid() {
+			userSid, errSid := steamid.Resolve(resolveCtx, msg[1])
+			if errSid != nil {
 				sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
 
 				return
+			} else if !userSid.Valid() {
+				sendMsg(session, message, fmt.Sprintf("Invalid SteamID: %s", msg[1]))
+
+				return
 			}
+
+			sid = userSid
 		}
 
 		var (
@@ -299,7 +289,12 @@ func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Sessio
 		case "!check":
 			response, cmdErr = checkEntry(ctx, database, sid)
 		case "!add":
-			response, cmdErr = addEntry(ctx, database, sid, msg)
+			author, errAuthor := strconv.ParseInt(message.Author.ID, 10, 64)
+			if errAuthor != nil {
+				cmdErr = errors.New("failed to get discord author id")
+				break
+			}
+			response, cmdErr = addEntry(ctx, database, sid, msg, author)
 		case "!steamid":
 			response, cmdErr = getSteamid(sid)
 		case "!count":

@@ -6,57 +6,70 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func openDB(ctx context.Context, dbPath string) (*sql.DB, error) {
-	const (
-		players = `CREATE TABLE IF NOT EXISTS player (
-		    steamid BIGINT PRIMARY KEY,
-		    attributes TEXT,
-		    last_seen BIGINT,
-		    last_name TEXT
-		);`
-	)
-
+func openDB(dbPath string) (*sql.DB, error) {
 	database, errOpen := sql.Open("sqlite3", dbPath+"?multiStatements=true")
 	if errOpen != nil {
 		return nil, errors.Join(errOpen, errors.New("could not open database"))
 	}
 
-	for _, table := range []string{players} {
-		stmt, errPrepare := database.PrepareContext(ctx, table)
-		if errPrepare != nil {
-			return nil, errors.Join(errPrepare, errors.New("failed to setup create table stmt"))
-		}
-
-		_, errExec := stmt.ExecContext(ctx)
-		if errExec != nil {
-			return nil, errors.Join(errExec, errors.New("failed to create table"))
-		}
-	}
-
 	return database, nil
 }
 
+func setupDB(ctx context.Context, database *sql.DB) error {
+	const query = `
+		CREATE TABLE IF NOT EXISTS player (
+		    steamid BIGINT PRIMARY KEY,
+		    attributes TEXT,
+		    last_seen BIGINT,
+		    last_name TEXT,
+		    author BIGINT default 0,
+		    created_on integer default 0
+		);`
+
+	stmt, errPrepare := database.PrepareContext(ctx, query)
+	if errPrepare != nil {
+		return errors.Join(errPrepare, errors.New("failed to setup create table stmt"))
+	}
+
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			slog.Error("Error closing prepared statement", slog.String("error", err.Error()))
+		}
+	}()
+
+	_, errExec := stmt.ExecContext(ctx)
+	if errExec != nil {
+		return errors.Join(errExec, errors.New("failed to create table"))
+	}
+
+	return nil
+}
+
 func getPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) (Player, error) {
-	const q = `SELECT steamid, attributes, last_seen, last_name FROM player WHERE steamid = ?`
+	const q = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player WHERE steamid = ?`
 	var (
-		player   Player
-		sid      int64
-		attrs    string
-		lastSeen int64
-		lastName string
+		player    Player
+		sid       int64
+		attrs     string
+		lastSeen  int64
+		lastName  string
+		createdOn int64
 	)
-	if errScan := db.QueryRowContext(ctx, q, steamID.Int64()).Scan(&sid, &attrs, &lastSeen, &lastName); errScan != nil {
+	if errScan := db.
+		QueryRowContext(ctx, q, steamID.Int64()).
+		Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
 		return Player{}, errScan
 	}
+
+	player.CreatedOn = time.Unix(createdOn, 0)
 	player.SteamID = steamid.New(sid)
-	for _, a := range strings.Split(attrs, ",") {
-		player.Attributes = append(player.Attributes, Attributes(a))
-	}
+	player.Attributes = strings.Split(strings.ToLower(attrs), ",")
 	player.LastSeen = LastSeen{
 		PlayerName: lastName,
 		Time:       lastSeen,
@@ -66,7 +79,7 @@ func getPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) (Player
 }
 
 func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
-	const q = `SELECT steamid, attributes, last_seen, last_name FROM player`
+	const q = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player`
 	rows, err := db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, errors.Join(err, errors.New("failed to load player"))
@@ -82,19 +95,19 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 
 	for rows.Next() {
 		var (
-			player   Player
-			sid      int64
-			attrs    string
-			lastSeen int64
-			lastName string
+			player    Player
+			sid       int64
+			attrs     string
+			lastSeen  int64
+			lastName  string
+			createdOn int64
 		)
-		if errScan := rows.Scan(&sid, &attrs, &lastSeen, &lastName); errScan != nil {
+		if errScan := rows.Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
 			return nil, errors.Join(errScan, errors.New("error scanning player row"))
 		}
+		player.CreatedOn = time.Unix(createdOn, 0)
 		player.SteamID = steamid.New(sid)
-		for _, a := range strings.Split(attrs, ",") {
-			player.Attributes = append(player.Attributes, Attributes(a))
-		}
+		player.Attributes = strings.Split(strings.ToLower(attrs), ",")
 		player.LastSeen = LastSeen{
 			PlayerName: lastName,
 			Time:       lastSeen,
@@ -119,17 +132,18 @@ func getCount(ctx context.Context, db *sql.DB) (int, error) {
 	return total, nil
 }
 
-func addPlayer(ctx context.Context, db *sql.DB, player Player) error {
+func addPlayer(ctx context.Context, db *sql.DB, player Player, author int64) error {
 	const q = `
-		INSERT INTO player (steamid, attributes, last_seen, last_name)
-		VALUES(?, ?, ?, ?)`
-	var attrs []string
-	for _, a := range player.Attributes {
-		attrs = append(attrs, string(a))
-	}
+		INSERT INTO player (steamid, attributes, last_seen, last_name, author, created_on)
+		VALUES(?, ?, ?, ?, ?, ?)`
 
-	if _, err := db.ExecContext(ctx, q, player.SteamID.Int64(), strings.Join(attrs, ","),
-		player.LastSeen.Time, player.LastSeen.PlayerName); err != nil {
+	if _, err := db.ExecContext(ctx, q,
+		player.SteamID.Int64(),
+		strings.ToLower(strings.Join(player.Attributes, ",")),
+		player.LastSeen.Time,
+		player.LastSeen.PlayerName,
+		author,
+		int(time.Now().Unix())); err != nil {
 		return err
 	}
 
