@@ -66,8 +66,13 @@ func handleGetSteamIDs(database *sql.DB, config Config) http.HandlerFunc {
 
 		players, errPlayers := getPlayers(request.Context(), database)
 		if errPlayers != nil {
+			slog.Error("Failed to load players", slog.String("error", errPlayers.Error()))
 			writer.WriteHeader(http.StatusInternalServerError)
-			_, _ = writer.Write([]byte("error"))
+			if errEncode := json.NewEncoder(writer).Encode(map[string]string{
+				"error": "Could not load player list",
+			}); errEncode != nil {
+				slog.Error("failed to encode response", slog.String("error", errEncode.Error()))
+			}
 
 			return
 		}
