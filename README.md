@@ -1,14 +1,16 @@
 # TF2BDd
 
-Simple service to send new player lists to the bot detector.
+Very simple service to allow tf2 bot detector player list contributions over discord and serve
+the results over a HTTP service to be consumed by any bot detector compatible client.
 
 ## Usage
 
     $ git clone git@github.com:leighmacdonald/tf2bdd.git
     $ cd tf2bdd
     $ go build
-    $ export STEAM_TOKEN=steam_web_api_token
-    $ export BOT_TOKEN=discord_bot_token
+    $ export STEAM_TOKEN=steam_web_api_token  # Your steam api key, for resolving vanity names
+    $ export BOT_TOKEN=discord_bot_token      # Your discord bot token
+    $ export ROLES=11111111111,222222222      # Roles allowed to use non-readonly commands
     $ ./tf2bdd
   
 ## Commands
