@@ -38,6 +38,9 @@ demand, or somebody creates a PR for it, I will add them.
 There is an example config located inside the releases `tf2bdd_example.yml`. Rename it to `tf2bdd.yml` and edit the 
 values as documented inside of it.
 
+Make sure you enable "Message Content Intent" on your discord config under the Bot settings via discord website. If your
+bot does not respond to your commands, this is probably why.
+
 ## Running Binary
 
 You can either use the binary you build from source, or download the latest release from the [releases](https://github.com/leighmacdonald/tf2bdd/releases)
