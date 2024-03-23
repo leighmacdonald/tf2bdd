@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -91,7 +92,9 @@ func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []
 		attrs = append(attrs, "cheater")
 	} else {
 		for i := 2; i < len(msg); i++ {
-			attrs = append(attrs, msg[i])
+			if !slices.Contains(attrs, msg[i]) {
+				attrs = append(attrs, msg[i])
+			}
 		}
 	}
 
@@ -123,8 +126,8 @@ func checkEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (str
 	}
 
 	return fmt.Sprintf(":skull_crossbones: %s is a confirmed baddie :skull_crossbones: "+
-		"https://steamcommunity.com/profiles/%d \nAuthor: <@%d>\nCreated: %s",
-		player.LastSeen.PlayerName, sid.Int64(), player.Author, player.CreatedOn.String()), nil
+		"https://steamcommunity.com/profiles/%d \nAttributes: %s\nAuthor: <@%d>\nCreated: %s",
+		player.LastSeen.PlayerName, sid.Int64(), strings.Join(player.Attributes, ","), player.Author, player.CreatedOn.String()), nil
 }
 
 func getSteamid(sid steamid.SteamID) string {
