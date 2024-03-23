@@ -82,3 +82,7 @@ jobs:
           retention-days: 1
 
 
+      - name: Build & publish image
+        run: |
+          docker build . --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF##*/}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF##*/}

@@ -39,7 +39,7 @@ func run() error {
 		return fmt.Errorf("invalid bot token: %s", token)
 	}
 
-	roles := strings.Split(os.Getenv("ROLES"), ",")
+	roles := strings.Split(os.Getenv("BOT_ROLES"), ",")
 	if len(roles) == 0 {
 		return errors.New("No discord roles defined, please set ROLES")
 	}
