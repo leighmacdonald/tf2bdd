@@ -3,9 +3,6 @@ all: build
 vet:
 	@go vet . ./...
 
-fmt:
-	@go fmt . ./...
-
 deps:
 	@go get github.com/golangci/golangci-lint/cmd/golangci-lint
 
@@ -41,6 +38,9 @@ runimage:
 fmt:
 	gci write . --skip-generated -s standard -s default
 	gofumpt -l -w .
+
+check:
+	@golangci-lint run --timeout 3m
 
 static:
 	@staticcheck -go 1.22 ./...

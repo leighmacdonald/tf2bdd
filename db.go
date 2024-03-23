@@ -51,8 +51,8 @@ func setupDB(ctx context.Context, database *sql.DB) error {
 	return nil
 }
 
-func getPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) (Player, error) {
-	const q = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player WHERE steamid = ?`
+func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (Player, error) {
+	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player WHERE steamid = ?`
 	var (
 		player    Player
 		sid       int64
@@ -61,8 +61,8 @@ func getPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) (Player
 		lastName  string
 		createdOn int64
 	)
-	if errScan := db.
-		QueryRowContext(ctx, q, steamID.Int64()).
+	if errScan := database.
+		QueryRowContext(ctx, query, steamID.Int64()).
 		Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
 		return Player{}, errScan
 	}
@@ -79,8 +79,8 @@ func getPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) (Player
 }
 
 func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
-	const q = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player`
-	rows, err := db.QueryContext(ctx, q)
+	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player`
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, errors.Join(err, errors.New("failed to load player"))
 	}
@@ -133,11 +133,11 @@ func getCount(ctx context.Context, db *sql.DB) (int, error) {
 }
 
 func addPlayer(ctx context.Context, db *sql.DB, player Player, author int64) error {
-	const q = `
+	const query = `
 		INSERT INTO player (steamid, attributes, last_seen, last_name, author, created_on)
 		VALUES(?, ?, ?, ?, ?, ?)`
 
-	if _, err := db.ExecContext(ctx, q,
+	if _, err := db.ExecContext(ctx, query,
 		player.SteamID.Int64(),
 		strings.ToLower(strings.Join(player.Attributes, ",")),
 		player.LastSeen.Time,
@@ -151,8 +151,8 @@ func addPlayer(ctx context.Context, db *sql.DB, player Player, author int64) err
 }
 
 func dropPlayer(ctx context.Context, db *sql.DB, steamID steamid.SteamID) error {
-	const q = `DELETE FROM player WHERE steamid = ?`
-	if _, err := db.ExecContext(ctx, q, steamID.Int64()); err != nil {
+	const query = `DELETE FROM player WHERE steamid = ?`
+	if _, err := db.ExecContext(ctx, query, steamID.Int64()); err != nil {
 		return errors.Join(err, errors.New("failed to drop user"))
 	}
 

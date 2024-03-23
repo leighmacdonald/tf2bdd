@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
+	"github.com/pkg/errors"
 )
 
 func main() {
@@ -65,7 +65,7 @@ func run() error {
 		return errBot
 	}
 
-	slog.Info("Add bot link", slog.String("link", AddUrl()))
+	slog.Info("Add bot link", slog.String("link", discordAddURL()))
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

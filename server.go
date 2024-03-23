@@ -44,7 +44,7 @@ type Player struct {
 	CreatedOn  time.Time       `json:"-"`
 }
 
-func handleGetSteamIDS(database *sql.DB) http.HandlerFunc {
+func handleGetSteamIDs(database *sql.DB) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		results := PlayerListRoot{
@@ -75,7 +75,7 @@ func handleGetSteamIDS(database *sql.DB) http.HandlerFunc {
 
 func createRouter(database *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/steamids", handleGetSteamIDS(database))
+	mux.HandleFunc("GET /v1/steamids", handleGetSteamIDs(database))
 
 	return mux
 }

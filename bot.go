@@ -24,7 +24,7 @@ const (
 
 var allowedRoles []string
 
-func AddUrl() string {
+func discordAddURL() string {
 	return fmt.Sprintf(addFmt, clientID, perms)
 }
 
@@ -54,15 +54,15 @@ func startBot(ctx context.Context, dg *discordgo.Session, database *sql.DB) erro
 	return nil
 }
 
-func memberHasRole(s *discordgo.Session, guildID string, userID string) (bool, error) {
-	member, errMember := s.State.Member(guildID, userID)
+func memberHasRole(session *discordgo.Session, guildID string, userID string) (bool, error) {
+	member, errMember := session.State.Member(guildID, userID)
 	if errMember != nil {
-		if member, errMember = s.GuildMember(guildID, userID); errMember != nil {
+		if member, errMember = session.GuildMember(guildID, userID); errMember != nil {
 			return false, errMember
 		}
 	}
 	for _, roleID := range member.Roles {
-		role, errRole := s.State.Role(guildID, roleID)
+		role, errRole := session.State.Role(guildID, roleID)
 		if errRole != nil {
 			return false, errRole
 		}
@@ -89,6 +89,7 @@ func totalEntries(ctx context.Context, database *sql.DB) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get count: %w", err)
 	}
+
 	return fmt.Sprintf("Total steamids tracked: %d", total), nil
 }
 
@@ -113,10 +114,11 @@ func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []
 	if err := addPlayer(ctx, database, player, author); err != nil {
 		if err.Error() == "UNIQUE constraint failed: player.steamid" {
 			return "", fmt.Errorf("duplicate steam id: %s", sid.String())
-		} else {
-			slog.Error("Failed to add player", slog.String("error", err.Error()))
-			return "", fmt.Errorf("oops")
 		}
+
+		slog.Error("Failed to add player", slog.String("error", err.Error()))
+
+		return "", fmt.Errorf("oops")
 	}
 
 	return fmt.Sprintf("Added new entry successfully: %s", sid.String()), nil
@@ -133,80 +135,101 @@ func checkEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (str
 		player.LastSeen.PlayerName, sid.Int64(), player.Author, player.CreatedOn.String()), nil
 }
 
-func getSteamid(sid steamid.SteamID) (string, error) {
-	var b strings.Builder
-	b.WriteString("```")
-	b.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
-	b.WriteString(fmt.Sprintf("Steam32: %d\n", sid.AccountID))
-	b.WriteString(fmt.Sprintf("Steam3:  %s", sid.Steam3()))
-	b.WriteString("```")
-	b.WriteString(fmt.Sprintf("Profile: <https://steamcommunity.com/profiles/%d>", sid.Int64()))
+func getSteamid(sid steamid.SteamID) string {
+	var builder strings.Builder
+	builder.WriteString("```")
+	builder.WriteString(fmt.Sprintf("Steam64: %d\n", sid.Int64()))
+	builder.WriteString(fmt.Sprintf("Steam32: %d\n", sid.AccountID))
+	builder.WriteString(fmt.Sprintf("Steam3:  %s", sid.Steam3()))
+	builder.WriteString("```")
+	builder.WriteString(fmt.Sprintf("Profile: <https://steamcommunity.com/profiles/%d>", sid.Int64()))
 
-	return b.String(), nil
+	return builder.String()
 }
 
-func importJSON(ctx context.Context, database *sql.DB, m *discordgo.MessageCreate) (string, error) {
-	if len(m.Attachments) == 0 {
+func importJSON(ctx context.Context, database *sql.DB, message *discordgo.MessageCreate) (string, error) {
+	if len(message.Attachments) == 0 {
 		return "", errors.New("must attach json file to import")
 	}
+
 	client := &http.Client{}
-	c, cancel := context.WithTimeout(ctx, time.Second*30)
+
+	importCtx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
 	added := 0
-	known, errKnown := getPlayers(ctx, database)
+	known, errKnown := getPlayers(importCtx, database)
 	if errKnown != nil {
 		return "", errors.Join(errKnown, errors.New("failed to load existing entries for comparison"))
 	}
 
-	author, errAuthor := strconv.ParseInt(m.Author.ID, 10, 64)
+	author, errAuthor := strconv.ParseInt(message.Author.ID, 10, 64)
 	if errAuthor != nil {
 		return "", errors.New("failed to get discord author id")
 	}
 
-	for _, attach := range m.Attachments {
-		req, err := http.NewRequestWithContext(c, "GET", attach.URL, nil)
-		if err != nil {
-			return "", errors.Join(err, errors.New("failed to setup http request"))
+	for _, attach := range message.Attachments {
+		newCount, errLoad := loadAttachment(importCtx, client, database, attach.URL, known, author)
+		if errLoad != nil {
+			return "", errLoad
 		}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			return "", errors.Join(err, errors.New("failed to download file"))
-		}
-
-		var playerList PlayerListRoot
-		if errDecode := json.NewDecoder(resp.Body).Decode(&playerList); errDecode != nil {
-			slog.Error("error decoding", slog.String("error", errDecode.Error()))
-			return "", errors.Join(errDecode, errors.New("failed to decode file"))
-		}
-
-		var toAdd []Player
-		for _, player := range playerList.Players {
-			found := false
-			for _, existing := range known {
-				if player.SteamID.Int64() == existing.SteamID.Int64() {
-					found = true
-
-					break
-				}
-			}
-			if !found {
-				toAdd = append(toAdd, player)
-			}
-		}
-
-		for _, p := range toAdd {
-			if errAdd := addPlayer(ctx, database, p, author); errAdd != nil {
-				slog.Error("failed to add new entry", slog.String("error", errAdd.Error()))
-				continue
-			}
-			added += 1
-		}
-
+		added += newCount
 	}
 
 	return fmt.Sprintf("Loaded %d new players", added), nil
+}
+
+func loadAttachment(ctx context.Context, client *http.Client, database *sql.DB, url string, known []Player, author int64) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, errors.Join(err, errors.New("failed to setup http request"))
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, errors.Join(err, errors.New("failed to download file"))
+	}
+
+	defer func() {
+		if errClose := resp.Body.Close(); errClose != nil {
+			slog.Error("failed to close body", slog.String("error", errClose.Error()))
+		}
+	}()
+
+	var playerList PlayerListRoot
+	if errDecode := json.NewDecoder(resp.Body).Decode(&playerList); errDecode != nil {
+		slog.Error("error decoding", slog.String("error", errDecode.Error()))
+
+		return 0, errors.Join(errDecode, errors.New("failed to decode file"))
+	}
+
+	var toAdd []Player
+	for _, player := range playerList.Players {
+		found := false
+		for _, existing := range known {
+			if player.SteamID.Int64() == existing.SteamID.Int64() {
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			toAdd = append(toAdd, player)
+		}
+	}
+
+	added := 0
+	for _, p := range toAdd {
+		if errAdd := addPlayer(ctx, database, p, author); errAdd != nil {
+			slog.Error("failed to add new entry", slog.String("error", errAdd.Error()))
+
+			continue
+		}
+		added++
+	}
+
+	return added, nil
 }
 
 func deleteEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (string, error) {
@@ -245,17 +268,20 @@ func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Sessio
 
 		if len(msg) < argCount {
 			sendMsg(session, message, fmt.Sprintf("Command requires at least %d args", argCount))
+
 			return
 		}
 
 		allowed, err := memberHasRole(session, message.GuildID, message.Author.ID)
 		if err != nil {
 			slog.Error("Failed to lookup role data")
+
 			return
 		}
 
 		if !allowed && msg[0] != "!steamid" && msg[0] != "!count" {
 			sendMsg(session, message, "Unauthorized")
+
 			return
 		}
 
@@ -292,11 +318,12 @@ func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Sessio
 			author, errAuthor := strconv.ParseInt(message.Author.ID, 10, 64)
 			if errAuthor != nil {
 				cmdErr = errors.New("failed to get discord author id")
+
 				break
 			}
 			response, cmdErr = addEntry(ctx, database, sid, msg, author)
 		case "!steamid":
-			response, cmdErr = getSteamid(sid)
+			response = getSteamid(sid)
 		case "!count":
 			response, cmdErr = totalEntries(ctx, database)
 		case "!import":
@@ -305,6 +332,7 @@ func messageCreate(ctx context.Context, database *sql.DB) func(*discordgo.Sessio
 
 		if cmdErr != nil {
 			sendMsg(session, message, cmdErr.Error())
+
 			return
 		}
 

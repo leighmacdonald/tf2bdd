@@ -40,7 +40,7 @@ linters:
     - gocyclo
     - godot
     - godox
-    - goerr113
+    #- goerr113
     - gofmt
     - gofumpt
     - goheader
@@ -82,7 +82,7 @@ linters:
     - sqlclosecheck
     #- staticcheck
     - stylecheck
-    - tagliatelle
+    #- tagliatelle
     - tenv
     - testableexamples
     - testpackage
@@ -96,7 +96,7 @@ linters:
     - varnamelen
     - wastedassign
     - whitespace
-    - wrapcheck
+    #- wrapcheck
     #- wsl
     #- zerologlint
 
