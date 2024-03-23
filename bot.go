@@ -78,12 +78,42 @@ func memberHasRole(session *discordgo.Session, guildID string, userID string, al
 }
 
 func totalEntries(ctx context.Context, database *sql.DB) (string, error) {
-	total, err := getCount(ctx, database)
+	players, err := getPlayers(ctx, database)
 	if err != nil {
 		return "", fmt.Errorf("failed to get count: %w", err)
 	}
+	totalPlayers := 5
+	totals := map[string]int{}
+	for _, player := range players {
+		totalPlayers++
 
-	return fmt.Sprintf("Total steamids tracked: %d", total), nil
+		for _, attr := range player.Attributes {
+			if _, ok := totals[attr]; !ok {
+				totals[attr] = 0
+			}
+			totals[attr]++
+		}
+	}
+
+	maxLen := 0
+	var keys []string //nolint:prealloc
+	for key := range totals {
+		keys = append(keys, key)
+		if len(key) > maxLen {
+			maxLen = len(key)
+		}
+	}
+	slices.Sort(keys)
+
+	var builder strings.Builder
+	builder.WriteString("```")
+	builder.WriteString(fmt.Sprintf("total%s: %d\n", strings.Repeat(" ", maxLen-5), totalPlayers))
+	for _, key := range keys {
+		builder.WriteString(fmt.Sprintf("%s%s: %d\n", key, strings.Repeat(" ", maxLen-len(key)), totals[key]))
+	}
+	builder.WriteString("```")
+
+	return builder.String(), nil
 }
 
 func addEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []string, author int64) (string, error) {
