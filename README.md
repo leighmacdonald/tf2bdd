@@ -55,7 +55,7 @@ You will probably want to create something like a systemd service to automate th
 ## Running Docker
 
     docker run --rm --name tf2bdd -it \
-        -p 127.0.0.1:8899:8899 \
+        -p 8899:8899 \
         --mount type=bind,source="$(pwd)"/db.sqlite,target=/app/db.sqlite \
         --mount type=bind,source="$(pwd)"/tf2bdd.yml,target=/app/tf2bdd.yml \
         ghcr.io/leighmacdonald/tf2bdd:latest

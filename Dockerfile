@@ -6,8 +6,8 @@ RUN go mod download
 COPY . .
 RUN go build -o tf2bdd
 
-FROM golang:latest
-RUN apt update && apt install dumb-init -y
+FROM alpine:latest
+RUN apk add dumb-init
 WORKDIR /app
 COPY --from=build /build/tf2bdd .
 
