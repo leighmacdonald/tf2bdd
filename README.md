@@ -17,6 +17,7 @@ Example results from the [@trusted](https://trusted.roto.lol/v1/steamids) list.
 Bot command list:
 
 - `!add <steamid/profile> [attributes]` Add the user to the master ban list. eg: `suspicious/cheater/bot`. If none are defined, it will use cheater by default.
+- `!addproof <steamid/profile> <proof>` Adds a entry in the users `proof` field. Can be any string/url.
 - `!del <steamid/profile>` Remove the player from the master list
 - `!check <steamid/profile>` Checks if the user exists in the database
 - `!count` Shows the current count of players tracked
