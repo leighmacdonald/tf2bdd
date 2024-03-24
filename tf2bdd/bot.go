@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -290,13 +291,18 @@ func deleteEntry(ctx context.Context, database *sql.DB, sid steamid.SteamID) (st
 	return fmt.Sprintf("Dropped entry successfully: %s", sid.String()), nil
 }
 
+func trimInputString(value string) string {
+	return strings.TrimSpace(regexp.MustCompile(`\s+`).ReplaceAllString(value, " "))
+}
+
 func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*discordgo.Session, *discordgo.MessageCreate) {
 	return func(session *discordgo.Session, message *discordgo.MessageCreate) {
 		// Ignore all messages created by the bot itself
 		if message.Author.ID == session.State.User.ID {
 			return
 		}
-		msg := strings.Split(strings.ToLower(message.Content), " ")
+		msg := strings.Split(trimInputString(message.Content), " ")
+		command := strings.ToLower(msg[0])
 		minArgs := map[string]int{
 			"!del":      2,
 			"!check":    2,
@@ -307,9 +313,9 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 			"!addproof": 3,
 		}
 
-		argCount, found := minArgs[msg[0]]
+		argCount, found := minArgs[command]
 		if !found {
-			sendMsg(session, message, fmt.Sprintf("unknown command: %s", msg[0]))
+			sendMsg(session, message, fmt.Sprintf("unknown command: %s", command))
 
 			return
 		}
@@ -328,7 +334,7 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 			return
 		}
 
-		if !allowed && msg[0] != "!steamid" && msg[0] != "!count" {
+		if !allowed && command != "!steamid" && command != "!count" {
 			sendMsg(session, message, "Unauthorized")
 
 			return
@@ -339,13 +345,14 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 			resolveCtx, cancel := context.WithTimeout(ctx, time.Second*10)
 			defer cancel()
 
-			userSid, errSid := steamid.Resolve(resolveCtx, msg[1])
+			idStr := msg[1]
+			userSid, errSid := steamid.Resolve(resolveCtx, idStr)
 			if errSid != nil {
-				sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", msg[1]))
+				sendMsg(session, message, fmt.Sprintf("Cannot resolve steam id: %s", idStr))
 
 				return
 			} else if !userSid.Valid() {
-				sendMsg(session, message, fmt.Sprintf("Invalid SteamID: %s", msg[1]))
+				sendMsg(session, message, fmt.Sprintf("Invalid SteamID: %s", idStr))
 
 				return
 			}
@@ -364,7 +371,7 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 		case "!check":
 			response, cmdErr = checkEntry(ctx, database, sid)
 		case "!addproof":
-			response, cmdErr = addProof(ctx, database, sid, msg[2:])
+			response, cmdErr = addProof(ctx, database, sid, trimInputString(strings.Join(msg[2:], " ")))
 		case "!add":
 			author, errAuthor := strconv.ParseInt(message.Author.ID, 10, 64)
 			if errAuthor != nil {
@@ -391,24 +398,21 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 	}
 }
 
-func addProof(ctx context.Context, database *sql.DB, sid steamid.SteamID, proofs []string) (string, error) {
+func addProof(ctx context.Context, database *sql.DB, sid steamid.SteamID, proof string) (string, error) {
 	player, errPlayer := getPlayer(ctx, database, sid)
 	if errPlayer != nil {
 		return "", errPlayer
 	}
-
-	for _, proof := range proofs {
-		if slices.Contains(player.Proof, proof) {
-			return "", errors.New("duplicate proof provided")
-		}
-		player.Proof = append(player.Proof, proof)
+	if slices.Contains(player.Proof, proof) {
+		return "", errors.New("duplicate proof provided")
 	}
+	player.Proof = append(player.Proof, proof)
 
 	if errUpdate := updatePlayer(ctx, database, player); errUpdate != nil {
 		return "", errors.Join(errUpdate, errors.New("could not update player entry"))
 	}
 
-	return fmt.Sprintf("Added %d proof entries", len(proofs)), nil
+	return "Added proof entry successfully", nil
 }
 
 func sendMsg(s *discordgo.Session, m *discordgo.MessageCreate, msg string) {
