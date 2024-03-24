@@ -3,8 +3,10 @@ package tf2bdd
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/leighmacdonald/steamid/v4/steamid"
+	"github.com/ncruces/go-sqlite3"
 )
 
 //go:embed migrations/*.sql
@@ -25,7 +28,29 @@ var (
 	ErrStoreDriver      = errors.New("failed to create db driver")
 	ErrCreateMigration  = errors.New("failed to create migrator")
 	ErrPerformMigration = errors.New("failed to migrate database")
+	ErrDuplicate        = errors.New("duplicate entry")
+	ErrNotFound         = errors.New("entry not found")
 )
+
+func dbErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	var sqliteErr *sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		switch {
+		case errors.Is(sqliteErr.Code(), sqlite3.CONSTRAINT):
+			return ErrDuplicate
+		default:
+			return fmt.Errorf("unhandled sqlite error: %w", err)
+		}
+	}
+
+	return err
+}
 
 func OpenDB(dbPath string) (*sql.DB, error) {
 	database, errOpen := sql.Open("sqlite3", dbPath)
@@ -75,8 +100,50 @@ func migrateDB(database *sql.DB) error {
 	return nil
 }
 
+const proofSep = "^^"
+
+type Proof []string
+
+func (p *Proof) Scan(value interface{}) error {
+	strVal, ok := value.(string)
+	if !ok {
+		return errors.New("invalid type")
+	}
+	if strVal == "" {
+		*p = []string{}
+
+		return nil
+	}
+
+	*p = strings.Split(strVal, proofSep)
+
+	return nil
+}
+
+func (p Proof) Value() (driver.Value, error) {
+	return strings.Join(p, proofSep), nil
+}
+
+func updatePlayer(ctx context.Context, database *sql.DB, player Player) error {
+	const query = `
+		UPDATE player 
+		SET attributes = ?,
+		    last_seen = ?,
+		    last_name = ?,
+		    author = ?,
+		    proof = ?
+		WHERE steamid = ?`
+
+	if _, errExec := database.ExecContext(ctx, query, strings.Join(player.Attributes, ","), player.LastSeen.Time, player.LastSeen.PlayerName,
+		player.Author, player.Proof, player.SteamID.Int64()); errExec != nil {
+		return errExec
+	}
+
+	return nil
+}
+
 func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (Player, error) {
-	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player WHERE steamid = ?`
+	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on, proof FROM player WHERE steamid = ?`
 
 	var (
 		player    Player
@@ -85,12 +152,13 @@ func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (
 		lastSeen  int64
 		lastName  string
 		createdOn int64
+		proof     Proof
 	)
 
 	if errScan := database.
 		QueryRowContext(ctx, query, steamID.Int64()).
-		Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
-		return Player{}, errScan
+		Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn, &proof); errScan != nil {
+		return Player{}, dbErr(errScan)
 	}
 
 	player.CreatedOn = time.Unix(createdOn, 0)
@@ -100,12 +168,13 @@ func getPlayer(ctx context.Context, database *sql.DB, steamID steamid.SteamID) (
 		PlayerName: lastName,
 		Time:       lastSeen,
 	}
+	player.Proof = proof
 
 	return player, nil
 }
 
 func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
-	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on FROM player`
+	const query = `SELECT steamid, attributes, last_seen, last_name, author, created_on, proof FROM player`
 
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
@@ -128,9 +197,10 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 			lastSeen  int64
 			lastName  string
 			createdOn int64
+			proof     Proof
 		)
 
-		if errScan := rows.Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn); errScan != nil {
+		if errScan := rows.Scan(&sid, &attrs, &lastSeen, &lastName, &player.Author, &createdOn, &proof); errScan != nil {
 			return nil, errors.Join(errScan, errors.New("error scanning player row"))
 		}
 
@@ -141,6 +211,7 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 			PlayerName: lastName,
 			Time:       lastSeen,
 		}
+		player.Proof = proof
 
 		players = append(players, player)
 	}
@@ -154,8 +225,8 @@ func getPlayers(ctx context.Context, db *sql.DB) ([]Player, error) {
 
 func AddPlayer(ctx context.Context, db *sql.DB, player Player, author int64) error {
 	const query = `
-		INSERT INTO player (steamid, attributes, last_seen, last_name, author, created_on)
-		VALUES(?, ?, ?, ?, ?, ?)`
+		INSERT INTO player (steamid, attributes, last_seen, last_name, author, created_on, proof)
+		VALUES(?, ?, ?, ?, ?, ?, ?)`
 
 	if _, err := db.ExecContext(ctx, query,
 		player.SteamID.Int64(),
@@ -163,8 +234,9 @@ func AddPlayer(ctx context.Context, db *sql.DB, player Player, author int64) err
 		player.LastSeen.Time,
 		player.LastSeen.PlayerName,
 		author,
-		int(time.Now().Unix())); err != nil {
-		return err
+		int(time.Now().Unix()),
+		player.Proof); err != nil {
+		return dbErr(err)
 	}
 
 	return nil
