@@ -3,12 +3,28 @@ package tf2bdd
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"errors"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/sqlite"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/leighmacdonald/steamid/v4/steamid"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+var (
+	ErrMigration        = errors.New("could not migrate db schema")
+	ErrStoreIOFSOpen    = errors.New("failed to create migration iofs")
+	ErrStoreIOFSClose   = errors.New("failed to close migration iofs")
+	ErrStoreDriver      = errors.New("failed to create db driver")
+	ErrCreateMigration  = errors.New("failed to create migrator")
+	ErrPerformMigration = errors.New("failed to migrate database")
 )
 
 func OpenDB(dbPath string) (*sql.DB, error) {
@@ -20,31 +36,40 @@ func OpenDB(dbPath string) (*sql.DB, error) {
 	return database, nil
 }
 
-func SetupDB(ctx context.Context, database *sql.DB) error {
-	const query = `
-		CREATE TABLE IF NOT EXISTS player (
-		    steamid BIGINT PRIMARY KEY,
-		    attributes TEXT,
-		    last_seen BIGINT,
-		    last_name TEXT,
-		    author BIGINT default 0,
-		    created_on integer default 0
-		);`
-
-	stmt, errPrepare := database.PrepareContext(ctx, query)
-	if errPrepare != nil {
-		return errors.Join(errPrepare, errors.New("failed to setup create table stmt"))
+func SetupDB(database *sql.DB) error {
+	slog.Info("Performing database migration")
+	if errMigrate := migrateDB(database); errMigrate != nil {
+		return errors.Join(errMigrate, ErrMigration)
 	}
 
-	defer func() {
-		if err := stmt.Close(); err != nil {
-			slog.Error("Error closing prepared statement", slog.String("error", err.Error()))
-		}
-	}()
+	return nil
+}
 
-	_, errExec := stmt.ExecContext(ctx)
-	if errExec != nil {
-		return errors.Join(errExec, errors.New("failed to create table"))
+func migrateDB(database *sql.DB) error {
+	fsDriver, errIofs := iofs.New(migrations, "migrations")
+	if errIofs != nil {
+		return errors.Join(errIofs, ErrStoreIOFSOpen)
+	}
+
+	sqlDriver, errDriver := sqlite.WithInstance(database, &sqlite.Config{})
+	if errDriver != nil {
+		return errors.Join(errDriver, ErrStoreDriver)
+	}
+
+	migrator, errNewMigrator := migrate.NewWithInstance("iofs", fsDriver, "sqlite", sqlDriver)
+	if errNewMigrator != nil {
+		return errors.Join(errNewMigrator, ErrCreateMigration)
+	}
+
+	if errMigrate := migrator.Up(); errMigrate != nil && !errors.Is(errMigrate, migrate.ErrNoChange) {
+		return errors.Join(errMigrate, ErrPerformMigration)
+	}
+
+	// We do not call migrator.Close and instead close the fsDriver manually.
+	// This is because sqlite will wipe the db when :memory: is used and the connection closes
+	// for any reason, which the migrator does when called.
+	if errClose := fsDriver.Close(); errClose != nil {
+		return errors.Join(errClose, ErrStoreIOFSClose)
 	}
 
 	return nil

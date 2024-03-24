@@ -49,12 +49,12 @@ func run() error {
 		return errDatabase
 	}
 
-	appCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	if errSetupDB := tf2bdd.SetupDB(appCtx, database); errSetupDB != nil {
+	if errSetupDB := tf2bdd.SetupDB(database); errSetupDB != nil {
 		return errSetupDB
 	}
+
+	appCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	listenAddr := fmt.Sprintf("%s:%d", config.ListenHost, config.ListenPort)
 	httpServer := tf2bdd.CreateHTTPServer(tf2bdd.CreateRouter(database, config), listenAddr)
