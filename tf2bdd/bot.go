@@ -380,7 +380,7 @@ func guildCreate(_ *discordgo.Session, event *discordgo.GuildCreate) {
 	}
 	for _, channel := range event.Guild.Channels {
 		if channel.ID == event.Guild.ID {
-			slog.Info("Connected to new guild", slog.String("guild", event.Guild.Name))
+			slog.Info("Connected to server", slog.String("guild", event.Guild.Name))
 
 			return
 		}

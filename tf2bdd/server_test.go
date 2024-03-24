@@ -16,13 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestDB(ctx context.Context) (*sql.DB, error) {
+func newTestDB() (*sql.DB, error) {
 	db, errDB := tf2bdd.OpenDB(":memory:")
 	if errDB != nil {
 		return nil, errDB
 	}
 
-	return db, tf2bdd.SetupDB(ctx, db)
+	return db, tf2bdd.SetupDB(db)
 }
 
 func TestHandleGetSteamIDS(t *testing.T) {
@@ -48,7 +48,7 @@ func TestHandleGetSteamIDS(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	database, errApp := newTestDB(ctx)
+	database, errApp := newTestDB()
 	require.NoError(t, errApp)
 
 	localPlayers := []tf2bdd.Player{
