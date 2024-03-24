@@ -315,8 +315,6 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 
 		argCount, found := minArgs[command]
 		if !found {
-			sendMsg(session, message, fmt.Sprintf("unknown command: %s", command))
-
 			return
 		}
 
