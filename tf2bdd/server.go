@@ -41,6 +41,7 @@ type Player struct {
 	LastSeen   LastSeen        `json:"last_seen,omitempty"`
 	Author     int64           `json:"-"`
 	CreatedOn  time.Time       `json:"-"`
+	Proof      []string        `json:"proof"`
 }
 
 func handleGetSteamIDs(database *sql.DB, config Config) http.HandlerFunc {

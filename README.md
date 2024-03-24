@@ -59,7 +59,7 @@ as [caddy](https://caddyserver.com/) that can provide automatic TLS certs for HT
 If you are using an internal docker network (recommended), ensure you also add the `--network your_network` flag
 to the run command. Take note that the container binds only to localhost in the example command shown `-p 127.0.0.1:8899:8899`, so you
 will not be able to access it remotely unless you remove the `127.0.0.1` or add a reverse proxy in front of it. When
-using a reverse proxy, ensure that you set the `external_url` config option to the url that people can read your server
+using a reverse proxy, ensure that you set the `external_url` config option to the url that people can access your server
 at.
 
 You can also use the `latest` image tag if you do not care about pinning to a specific version: `ghcr.io/leighmacdonald/tf2bdd:latest`.

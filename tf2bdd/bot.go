@@ -341,6 +341,8 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 			response, cmdErr = deleteEntry(ctx, database, sid)
 		case "!check":
 			response, cmdErr = checkEntry(ctx, database, sid)
+		case "!addproof":
+			response, cmdErr = addProof(ctx, database, sid, msg[1:])
 		case "!add":
 			author, errAuthor := strconv.ParseInt(message.Author.ID, 10, 64)
 			if errAuthor != nil {
@@ -364,6 +366,13 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 		}
 
 		sendMsg(session, message, response)
+	}
+}
+
+func addProof(ctx context.Context, database *sql.DB, sid steamid.SteamID, msg []string) (string, error) {
+	player, errPlayer := getPlayer(ctx, database, sid)
+	if errPlayer != nil {
+		return "", errPlayer
 	}
 }
 
