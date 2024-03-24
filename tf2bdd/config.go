@@ -33,16 +33,16 @@ func (config Config) ListenAddr() string {
 }
 
 func (config Config) UpdateURL() (string, error) {
-	extUrl := config.ExternalURL
-	if extUrl == "" {
+	extURL := config.ExternalURL
+	if extURL == "" {
 		host := config.ListenHost
 		if host == "" {
 			host = "localhost"
 		}
-		extUrl = fmt.Sprintf("http://%s", net.JoinHostPort(host, fmt.Sprintf("%d", config.ListenPort)))
+		extURL = fmt.Sprintf("http://%s", net.JoinHostPort(host, fmt.Sprintf("%d", config.ListenPort)))
 	}
 
-	parsed, errParse := url.Parse(extUrl)
+	parsed, errParse := url.Parse(extURL)
 	if errParse != nil {
 		return "", errParse
 	}
