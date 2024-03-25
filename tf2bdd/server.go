@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/leighmacdonald/steamid/v4/steamid"
@@ -45,10 +43,9 @@ type Player struct {
 }
 
 func handleGetSteamIDs(database *sql.DB, config Config) http.HandlerFunc {
-	hostPort := net.JoinHostPort(config.ListenHost, fmt.Sprintf("%d", config.ListenPort))
-	updateURL := fmt.Sprintf("http://%s/v1/steamids", hostPort)
-	if config.ExternalURL != "" {
-		updateURL = fmt.Sprintf("%s/v1/steamids", strings.TrimSuffix(config.ExternalURL, "/"))
+	updateURL, errUpdateURL := config.UpdateURL()
+	if errUpdateURL != nil {
+		panic(fmt.Errorf("failed to create valid update url: %w", errUpdateURL))
 	}
 
 	return func(writer http.ResponseWriter, request *http.Request) {

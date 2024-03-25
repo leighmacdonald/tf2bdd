@@ -3,6 +3,8 @@ package tf2bdd
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
 	"github.com/mitchellh/go-homedir"
@@ -24,6 +26,29 @@ type Config struct {
 	ListDescription string   `mapstructure:"list_description"`
 	ListAuthors     []string `mapstructure:"list_authors"`
 	ExportedAttrs   []string `mapstructure:"exported_attrs"`
+}
+
+func (config Config) ListenAddr() string {
+	return net.JoinHostPort(config.ListenHost, fmt.Sprintf("%d", config.ListenPort))
+}
+
+func (config Config) UpdateURL() (string, error) {
+	extURL := config.ExternalURL
+	if extURL == "" {
+		host := config.ListenHost
+		if host == "" {
+			host = "localhost"
+		}
+		extURL = fmt.Sprintf("http://%s", net.JoinHostPort(host, fmt.Sprintf("%d", config.ListenPort)))
+	}
+
+	parsed, errParse := url.Parse(extURL)
+	if errParse != nil {
+		return "", errParse
+	}
+	parsed.Path = "/v1/steamids"
+
+	return parsed.String(), nil
 }
 
 func ReadConfig() (Config, error) {

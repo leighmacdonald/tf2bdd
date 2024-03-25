@@ -310,6 +310,7 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 			"!steamid":  2,
 			"!import":   1,
 			"!count":    1,
+			"!link":     1,
 			"!addproof": 3,
 		}
 
@@ -366,6 +367,8 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 		switch strings.ToLower(msg[0]) {
 		case "!del":
 			response, cmdErr = deleteEntry(ctx, database, sid)
+		case "!link":
+			response, cmdErr = getLink(config)
 		case "!check":
 			response, cmdErr = checkEntry(ctx, database, sid)
 		case "!addproof":
@@ -396,7 +399,20 @@ func messageCreate(ctx context.Context, database *sql.DB, config Config) func(*d
 	}
 }
 
+func getLink(config Config) (string, error) {
+	link, errLink := config.UpdateURL()
+	if errLink != nil {
+		return "", errLink
+	}
+
+	return fmt.Sprintf("<%s>", link), nil
+}
+
 func addProof(ctx context.Context, database *sql.DB, sid steamid.SteamID, proof string) (string, error) {
+	if proof == "" {
+		return "", errors.New("empty proof value")
+	}
+
 	player, errPlayer := getPlayer(ctx, database, sid)
 	if errPlayer != nil {
 		return "", errPlayer

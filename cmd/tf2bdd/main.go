@@ -56,8 +56,7 @@ func run() error {
 	appCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	listenAddr := fmt.Sprintf("%s:%d", config.ListenHost, config.ListenPort)
-	httpServer := tf2bdd.CreateHTTPServer(tf2bdd.CreateRouter(database, config), listenAddr)
+	httpServer := tf2bdd.CreateHTTPServer(tf2bdd.CreateRouter(database, config), config.ListenAddr())
 
 	discordBot, errBot := tf2bdd.NewBot(config.DiscordBotToken)
 	if errBot != nil {
@@ -66,7 +65,7 @@ func run() error {
 
 	slog.Info("Add bot", slog.String("link", tf2bdd.DiscordAddURL(config.DiscordClientID)))
 	slog.Info("Make sure you enable \"Message Content Intent\" on your discord config under the Bot settings via discord website")
-	slog.Info("Listening on", slog.String("addr", fmt.Sprintf("http://%s", listenAddr)))
+	slog.Info("Listening on", slog.String("addr", config.ListenAddr()))
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
